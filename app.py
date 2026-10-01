@@ -12,7 +12,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 # NumPy 2.0+ compatibility for trapezoidal integration
-integrate_trapz = getattr(np, 'trapezoid', np.trapz)
+integrate_trapz = getattr(np, 'trapezoid', getattr(np, 'trapz', None))
 
 # ==========================================
 # 1. PAGE CONFIGURATION
