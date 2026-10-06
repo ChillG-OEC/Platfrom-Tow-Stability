@@ -17,6 +17,7 @@ import streamlit as st
 
 
 import jacket_stability as js
+import model_validation as mv
 import sensitivity as sv
 import viz
 from report import ASSUMPTIONS, APP_VERSION, build_pdf, fmt
@@ -406,6 +407,12 @@ snap = make_snapshot(weights_df, elems_df, open_df, lines_df)
 cur_hash = snap_hash(snap)
 els, wts, ops, params, crit = parts_from_snapshot(snap)
 errors, warnings = js.validate_inputs(els, wts, ops, params)
+try:   # extra model checks (model_validation.py); a failure here must never stop the app
+    _dmg_now = str(st.session_state.get("a_scenario", "Intact")).startswith("Damaged")
+    errors, warnings = mv.merge_with_legacy(
+        errors, warnings, mv.validate_model(els, wts, ops, params, crit, damaged=_dmg_now))
+except Exception as _exc:
+    warnings = list(warnings) + [f"Extra model checks could not run: {_exc}"]
 
 st.sidebar.header("Run")
 _sj = json.dumps(snap["elements"], sort_keys=True, default=str)
