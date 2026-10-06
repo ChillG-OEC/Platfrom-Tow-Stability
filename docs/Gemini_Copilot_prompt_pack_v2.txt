@@ -1,0 +1,1136 @@
+PROMPT PACK: PLATFORM TOW STABILITY  (v2, checked against the repository code on 2026-10-06)
+
+HOW TO USE
+
+0. Run `git pull` in your local repo first, so the files you attach include the latest commit (OEC logo in app.py and report.py).
+1. Paste PART A at the beginning of every new chat.
+2. Attach the files listed in PART B.
+3. Paste one task only from PART C.
+4. Review and test the returned code separately.
+5. Do not allow the coding assistant to commit or push to the repository.
+
+
+============================================================
+PART A: PROJECT CONTEXT AND DEVELOPMENT RULES
+============================================================
+
+You are helping extend a marine-engineering screening tool.
+
+Produce implementation-ready technical content only. Your response must contain:
+
+1. Formulas and assumptions
+2. Complete Python code
+3. Complete pytest tests
+4. A short verification checklist
+
+Do not include conversational filler.
+
+PROJECT
+
+The application screens the wet-tow stability of a floating offshore jacket supported by buoyancy tanks.
+
+Organisation: OEC
+Client: ICON
+Project: Conrad Mako
+
+Architecture:
+
+- Streamlit user interface
+- Pure-NumPy engineering calculation engine
+- Plotly visualisation
+- ReportLab PDF reporting
+
+Repository:
+
+ChillG-OEC/Platfrom-Tow-Stability
+
+The spelling "Platfrom" is correct.
+
+Branch:
+
+main
+
+Python and permitted dependencies:
+
+- Python 3
+- numpy
+- pandas
+- plotly
+- streamlit
+- reportlab
+- pytest for testing
+
+Do not introduce another dependency unless the selected task explicitly permits it.
+
+
+STATUS AND LIMITATIONS OF THE DATA
+
+All geometry, weights, water depth, environmental conditions and acceptance criteria are synthetic placeholders until the project Basis of Design is received.
+
+Never describe synthetic results as Conrad Mako project results.
+
+The application is a preliminary engineering screening calculation only. It has not been independently checked and is not suitable for:
+
+- Construction
+- Certification
+- Marine warranty approval
+- Operational approval
+- Final design
+- Motion analysis
+- Tow operability approval
+
+
+FIXED ENGINEERING CONVENTIONS
+
+Do not change these conventions.
+
+Units:
+
+- Length: metres
+- Mass: tonnes
+- Force: kN
+- Angle: degrees
+- Time: seconds
+- Water density: rho_w = 1.025 t/m3
+- Gravitational acceleration: g = 9.81 m/s2
+
+Dynamic calculations must be performed internally in coherent SI units:
+
+- kg
+- N
+- m
+- seconds
+
+Convert tonnes to kg and kN to N at the calculation boundary. Return display quantities in the project units.
+
+Body coordinate frame:
+
+- +x: forward, nominal tow direction
+- +y: athwartship
+- +z: vertically upward
+
+All z coordinates are elevations above the structure base datum in the upright condition.
+
+Heading convention:
+
+- Heading is measured in degrees from body +x toward body +y.
+
+Line elevation convention:
+
+- Positive elevation means that the line pulls upward.
+
+Wind heading convention:
+
+- Wind heading 0 degrees means wind acting toward body +x.
+
+Geometry convention:
+
+Members are straight circular cylinders or annuli between two points and are represented by Element objects.
+
+Only members with buoyant=True contribute displacement.
+
+Flooded jacket legs do not contribute buoyancy.
+
+The current synthetic model receives buoyancy from the buoyancy tanks.
+
+
+HARD DEVELOPMENT RULES
+
+1. Treat the attached repository files as the only authority for existing names, return keys, signatures and behaviour.
+
+2. Do not invent:
+   - Helper functions
+   - Dictionary keys
+   - Constructor arguments
+   - Streamlit widget labels
+   - Session-state keys
+   - Report sections
+   - Object-copy methods
+
+3. Do not remove, rename or alter the meaning of an existing function argument, dataclass field or return value.
+
+4. Do not change an existing function signature unless the selected task explicitly permits a backward-compatible optional keyword argument.
+
+5. Prefer a new function, new dataclass, new class or new file.
+
+6. Give complete executable code. Do not use:
+   - "..."
+   - "rest unchanged"
+   - pseudocode
+   - incomplete snippets presented as complete implementations
+
+7. If only insertion lines are requested, show:
+   - Exact target file
+   - Exact insertion location
+   - Required imports
+   - Complete inserted block
+
+8. Do not add new production dependencies unless explicitly permitted by the task.
+
+9. Before presenting code:
+   - State the formulas in plain text.
+   - List every assumption.
+   - List every coefficient.
+   - Identify each coefficient as user input, derived, sourced or assumed.
+   - Mark anything uncertain.
+
+10. Use named constants or function arguments for coefficients. Do not use unexplained numeric constants.
+
+11. Return plain dictionaries or dataclasses that can be displayed in existing Streamlit tables.
+
+12. Do not mutate caller-owned objects.
+
+13. Use explicit numerical tolerances.
+
+14. Preserve full numerical precision internally. Round only for display.
+
+15. Detect and report non-finite inputs.
+
+16. Distinguish:
+   - Physical failure
+   - Invalid input
+   - Numerical failure
+   - Non-convergence
+
+17. Return warnings with calculation results where applicable.
+
+18. If a calculation cannot be performed defensibly at screening level, say so clearly and do not guess.
+
+19. Do not invent:
+   - Standard clauses
+   - Standard names
+   - Acceptance values
+   - Project values
+
+20. Acceptance criteria must remain user-defined placeholders unless confirmed project criteria are supplied.
+
+21. All new code must preserve existing behaviour and existing passing tests.
+
+22. Do not commit, push or modify the remote repository.
+
+
+TEST REQUIREMENTS
+
+Each task must include, where applicable:
+
+1. One nominal test with a hand-calculated expected result.
+2. One boundary-condition test.
+3. One invalid-input test.
+4. One backward-compatibility or regression test.
+5. Comments showing the independent hand calculation.
+6. Explicit tolerances using pytest.approx or equivalent.
+7. A check that input objects were not mutated.
+
+A test must not merely reproduce the production implementation through the same code path.
+
+
+REQUIRED RESPONSE FORMAT
+
+Use exactly these sections:
+
+1. FORMULAS
+2. ASSUMPTIONS AND COEFFICIENTS
+3. IMPLEMENTATION
+4. TESTS
+5. INTEGRATION CHANGES
+6. ITEMS TO CHECK
+
+For each code block, state the target filename.
+
+
+============================================================
+PART B: FILES AND EXISTING API
+============================================================
+
+Always attach:
+
+- jacket_stability.py
+- test_jacket_stability.py
+
+Also attach when relevant:
+
+- app.py for Streamlit changes
+- sensitivity.py for sensitivity studies
+- report.py for PDF changes
+- viz.py for 3D visualisation
+- README.md for user-facing behaviour
+- requirements.txt when dependencies are relevant
+
+
+EXISTING API
+
+Use the attached files as the final authority. The following summary is provided to prevent invented names.
+
+@dataclass
+class Element:
+    name
+    p1: (x, y, z)
+    p2: (x, y, z)
+    d_out
+    d_in = 0.0
+    buoyant = True
+    exposed = True
+    flooded = False
+
+
+@dataclass
+class WeightItem:
+    name
+    mass_t
+    x
+    y
+    z
+
+
+@dataclass
+class Opening:
+    name
+    x
+    y
+    z
+
+
+@dataclass
+class Line:
+    name
+    point: (x, y, z)
+    heading_deg = 0
+    elevation_deg = 0
+    mode = "fixed" or "tow"
+    tension_kn = 0
+    share = 1
+
+
+@dataclass
+class Params:
+    rho_w = 1.025
+    rho_a = 1.225
+    wind_speed_kn = 40
+    wind_cs = 1.0
+    wind_alpha = 0
+    wind_zref = 10
+    cd_water = 1.0
+    shielding = 1.0
+    tow_speed_kn = 2.5
+    tow_point = (0, 0, 0)
+    tow_heading_deg = 0
+    tow_mode = "auto"
+    tow_manual_kn = 0
+    tow_elevation_deg = 0
+    lines = ()
+    tow_factor = 1.0
+    fsc_m = 0.0
+    lr_mode = "area"
+    slice_m = 0.5
+    trim_limit_deg = 25
+    water_depth_m = 0.0
+    tide_m = 0.0
+
+
+@dataclass
+class Criteria:
+    gm_min = 1.0
+    heel_max_deg = 15
+    ratio_min = 1.3
+    cap_deg = 40
+    df_min_deg = 0
+    clear_min_m = 0.0
+    emerged_min_m = 0.0
+
+All current criteria are placeholders.
+
+Existing functions and methods include:
+
+JacketModel(elements, weights, openings, params, damaged=False)
+
+  Raises ValueError("Total weight must be positive.") or
+  ValueError("No buoyant elements - nothing to float on.") on invalid input.
+
+JacketModel.upright() -> dict
+
+JacketModel.gm(beta_deg) -> float
+
+JacketModel.sweep(beta_deg, phi_grid_deg) -> dict
+
+JacketModel.hydrostatics() -> dict
+
+NOTE: mass_at is NOT a JacketModel method. It is a nested helper inside float_check.
+To get the displacement (t) that puts the level waterline at height zw, use:
+
+    rho_w * cut(model.ea, np.array([0.0, 0.0, 1.0]), zw)[0]
+
+where cut() is the module-level function in jacket_stability.py and model.ea is the
+buoyant-element array (flooded members are already excluded when damaged=True).
+
+JacketModel.free_tilt(...)
+
+JacketModel.attitude_state(beta, phi, theta)
+
+JacketModel.hydrostatics() -> dict. Real keys:
+    W, volume, rho_w, G_body, B_body, zw, draft, trim_deg, kg_base, kb_base, kg, kb,
+    gm_x, gm_y, km_x, km_y, bm_x, bm_y, waterplane_area, tpc, reserve_buoyancy_pct,
+    buoyant_volume, fsc_m, damaged, bbox_lo, bbox_hi, members, openings, n_members, n_weights
+  It raises ValueError("Insufficient buoyancy to float the structure.") when the
+  structure cannot float. Map that to "no_float".
+
+GM AXIS CONVENTION (important):
+    gm_x = GM for wind toward +x, i.e. heel about the y axis  -> PITCH stiffness
+    gm_y = GM for wind toward +y, i.e. heel about the x axis  -> ROLL stiffness
+    JacketModel.gm(beta_deg) is the same quantity at an arbitrary wind heading.
+
+JacketModel.free_tilt() -> dict or None. Key tilt_deg is the free static heel with no
+wind or tow. None means no stable floating attitude within 60 degrees.
+
+float_check(model, criteria) -> dict. Real keys:
+    zw, z_base, z_top, draft_total, trim_deg, water_depth, tide, depth_total, clearance,
+    emerged_min, tanks, freeboard_top, opening_min, gm_min, gm_x, gm_y, free_tilt_deg,
+    stable, displacement_t, reserve_buoyancy_pct, governing_limit, ballast_headroom_t,
+    pass_clearance, pass_emerged, pass_gm, passed
+  Datum for clearance: z_base is the lowest point of the exact cylinder extents.
+  clearance = (water_depth_m + tide_m) - draft_total, using the level waterline.
+  Emerged length of a tank = length_m * (1 - sub_pct/100). float_check reports the
+  MINIMUM over buoyant tanks as emerged_min.
+
+analyse_curve(sweep, gm, criteria) -> dict. Real keys include:
+    gm, theta_s (static heel, None if no equilibrium), ratio (area ratio), theta_df,
+    trim_at_s, tow_kn, wind_kn, note, pass_gm, pass_heel, pass_ratio, pass_df, passed
+  There are NO numeric margins; only the boolean pass_* flags and the values.
+
+run_study(model, betas_deg, phi_grid_deg, crit, progress=None) -> dict
+    keys: upright, heads (each: beta, sweep, analysis), summary, W, G, damaged
+    summary keys: gm_min, heel_max, no_equilibrium, ratio_min, df_min, governing_beta,
+    tow_kn (max over headings), passed, unconverged, trim_unstable
+    Governing heading = lowest area ratio.
+
+sensitivity.run_case(elements, weights, openings, params, crit, betas, grid, damaged=False) -> dict
+    keys: status, note, reserve_pct, draft, tilt, gm_min, heel_max, ratio_min, gov_beta,
+    tow_kn, passed, listed, res
+    status is OK or one of the sinks / capsizes states. It has no trim_deg and no failed_criteria.
+
+report.build_pdf(snap, res, meta, prepared, checked, rev) -> io.BytesIO
+    The header table is built INSIDE build_pdf. The page callback draws the OEC logo (oec_logo.png).
+
+validate_inputs(elements, weights, openings, params) -> (errors: list[str], warnings: list[str])
+    Already checks: weights empty or zero, d_out <= 0, d_in >= d_out, coincident end points,
+    no buoyant elements, insufficient buoyancy, line mode, elevation range, negative tension,
+    tow share, and a double-counting warning. Do not duplicate these messages.
+
+synthetic_inputs() -> dict
+
+
+SYNTHETIC REGRESSION CASE
+
+The following values are synthetic placeholders and must be labelled accordingly:
+
+- Total mass: 700 t
+- CoG: (0, 0, 42.21) m
+- Four buoyancy tanks
+- Tank diameter: 3 m
+- Tank length: 30 m
+- Tank elevations: z = 60 m to z = 90 m
+- Water depth: 92.4 m LAT
+
+Approximate expected screening outputs:
+
+- GM: 30.39 m
+- Equilibrium waterline elevation: 84.15 m
+- Emerged tank length: 5.85 m
+- Ballast headroom: approximately 25 t
+- Waterplane response: approximately 29 t per metre of draft
+
+Use reasonable explicit tolerances based on the current engine resolution.
+
+
+============================================================
+PART C: DEVELOPMENT TASKS
+============================================================
+
+Run one task per chat.
+
+
+------------------------------------------------------------
+C1: DOCUMENT CONTROL
+------------------------------------------------------------
+
+Add document-control information to the PDF report.
+
+Required fields:
+
+- Client
+- Project
+- Document number
+- Revision
+- Status:
+  - Draft
+  - For review
+  - Issued
+- Prepared by
+- Checked by
+- Approved by
+- Date
+
+Revision-history columns:
+
+- Revision
+- Date
+- Description
+- By
+- Checked
+
+Requirements:
+
+1. Add a new DocControl dataclass with safe empty-string defaults.
+
+2. Add:
+
+   doc_control_rows(dc: DocControl) -> list[list[str]]
+
+3. The header table is built inside build_pdf, so document control cannot be added from outside it.
+   Therefore this task PERMITS one backward-compatible change:
+
+   build_pdf(snap, res, meta, prepared, checked, rev, doc=None)
+
+   - doc is an optional DocControl.
+   - With doc=None the output must be identical to today's output (same content and layout).
+   - Do not copy or duplicate the PDF-building code.
+   - The page callback currently draws the OEC logo at the top right of every page; keep it.
+
+4. Provide only the changed lines of build_pdf, with exact insertion points.
+
+5. Existing calls must continue to work unchanged. Add a test that calls build_pdf without doc.
+
+6. Add Streamlit document-control inputs using actual existing labels and layout from app.py.
+
+7. Do not use mutable list defaults in the dataclass.
+
+8. Include tests for:
+   - Default values
+   - Header-row conversion
+   - Revision-history conversion
+   - Existing build_pdf compatibility (call without doc)
+   - PDF generation with populated document control (bytes start with b"%PDF")
+
+
+------------------------------------------------------------
+C2: INPUT VALIDATION
+------------------------------------------------------------
+
+Write:
+
+validate_model(
+    elements,
+    weights,
+    openings,
+    params,
+    crit,
+) -> list[dict]
+
+Each returned item must contain:
+
+{
+    "level": "error" or "warning",
+    "code": str,
+    "message": str,
+    "where": str,
+}
+
+Keep this function separate from the existing validate_inputs function.
+validate_inputs already covers checks 2, 3, 4, 7, 8 and 9 with plain-string messages. Reuse the same
+thresholds and wording intent where they overlap, and do not change validate_inputs.
+
+Checks:
+
+1. Duplicate element names
+2. Zero-length members
+3. d_in >= d_out
+4. Non-positive outside diameters
+5. Negative inside diameters
+6. Non-finite numeric inputs
+7. Negative or zero total mass
+8. No buoyant members
+9. Total maximum buoyant volume cannot support total weight
+10. CoG lies outside the overall member bounding box by a large margin
+11. Openings below the structure base datum
+12. Water depth smaller than the structure height
+13. Diameters greater than 20 m as a unit-warning heuristic
+14. Member lengths greater than 500 m as a unit-warning heuristic
+15. Duplicate members
+16. Near-coincident members
+
+Requirements:
+
+- Thresholds for "large margin" and "near-coincident" must be named arguments or named constants.
+- Coincident-member comparison must be independent of p1/p2 ordering.
+- Flooded or non-buoyant members must not contribute buoyant capacity.
+- Annulus volume must use d_out and d_in correctly.
+- Do not solve equilibrium merely to perform the maximum-capacity check.
+- Do not mutate inputs.
+- Include nominal, boundary, invalid-input and regression tests.
+
+
+------------------------------------------------------------
+C3: PULL-IN LINE SENSITIVITY SWEEPS
+------------------------------------------------------------
+
+Using the actual sensitivity.run_case API and Line dataclass in the attached files, add line-sweep functions that vary one quantity at a time:
+
+- Tension
+- Heading
+- Elevation
+- Connection height
+- Number of active lines
+- Load share
+
+Return:
+
+{
+    "rows": [...],
+    "governing_case": ...,
+    "warnings": [...],
+}
+
+Each row must contain:
+
+- value
+- static_heel_deg   <- run_case["heel_max"]  (worst case over the wind headings; None if no equilibrium)
+- area_ratio        <- run_case["ratio_min"]
+- gm_m              <- run_case["gm_min"]
+- trim_deg          <- not returned by run_case. Take it from the governing heading's analysis
+                      run_case["res"]["heads"][i]["analysis"]["trim_at_s"], or return None and say so.
+- pull_kn           <- run_case["tow_kn"]  (maximum over headings; see requirement 4)
+- passed            <- run_case["passed"]
+- failed_criteria   <- built from analyse_curve flags pass_gm, pass_heel, pass_ratio, pass_df of the
+                      governing heading, plus status values other than OK (sinks, capsizes) and "listed".
+
+Requirements:
+
+1. Use existing analyse_curve and Criteria logic for pass/fail.
+
+2. Do not create new acceptance criteria.
+
+3. Do not mutate the source model or source Line objects.
+
+4. Clarify whether pull_kn means:
+   - Individual line force
+   - Shared resultant
+   - Total resultant
+
+5. Preserve vector heading and elevation conventions.
+
+6. The engine exposes no numeric criterion margins, only values and boolean pass flags.
+
+7. Therefore:
+   - Return all failed cases.
+   - Rank screening severity first by lowest area ratio and then by highest static heel.
+   - Clearly label this as a screening ranking, not an acceptance criterion.
+
+8. Show complete code for integration into the existing sensitivity tab using actual widgets from app.py.
+
+Tests must include:
+
+- A symmetric model with no wind or other external heeling load.
+- One line passing through the equilibrium centre of buoyancy.
+- Verification that the line's direct moment about that centre is zero within tolerance.
+- Heading wrap-around.
+- Zero-tension line.
+- Input objects remain unchanged.
+
+
+------------------------------------------------------------
+C4: SET-DOWN BALLAST AND TIDE TABLE
+------------------------------------------------------------
+
+Write:
+
+setdown_table(
+    model,
+    crit,
+    ballast_point,
+    ballast_steps_t,
+    tides_m,
+) -> list[dict]
+
+For every ballast step:
+
+1. Create a new WeightItem at ballast_point.
+2. Create a new model.
+3. Do not mutate the supplied model.
+4. Evaluate every supplied tide.
+
+Tide convention:
+
+- tide_m is elevation in metres above LAT.
+- params.water_depth_m is water depth at LAT.
+- Available depth is:
+
+  params.water_depth_m + tide_m
+
+- Changing tide changes available water depth and seabed clearance.
+- Tide does not directly change free-floating equilibrium draft relative to the water surface.
+
+Each result row must include:
+
+- ballast_t
+- tide_name, if supplied
+- tide_m
+- displacement_t
+- waterline_z_m
+- draft_m
+- heel_deg      (from free_tilt()["tilt_deg"])
+- trim_deg      (from hydrostatics()["trim_deg"])
+- gm_m
+- emerged_tank_length_m
+- seabed_clearance_m
+- ballast_headroom_t
+- status:
+  - pass
+  - fail
+  - no_float
+  - numerical_failure
+- passed
+- first_failed_criterion
+- failed_criteria
+- warnings
+
+Requirements:
+
+1. Use free-floating heel and trim from the existing engine.
+
+2. mass_at is not available as a method. Where needed use rho_w * cut(model.ea, [0,0,1], zw)[0].
+
+3. Do not change float_check.
+
+4. Stop the calculation for a row and report no_float when available buoyancy cannot support weight.
+   no_float is signalled by ValueError from JacketModel(...) or from hydrostatics(), or by free_tilt() returning None
+   (report that last case as an unstable attitude, not as no_float).
+   Use float_check(model, crit) for clearance, emerged length and headroom. Do not re-derive them.
+
+5. Do not calculate misleading GM, heel or trim for a no-float state.
+
+6. Apply only active Criteria checks.
+
+7. Define how emerged tank length is combined when multiple tanks have different top elevations.
+
+8. State the exact datum used for seabed clearance.
+
+Tests:
+
+- Synthetic baseline
+- Zero-ballast condition
+- A ballast state that places the relevant tank top at the waterline
+- A no-float condition
+- Tide changes clearance but not equilibrium draft
+- Source model remains unchanged
+
+
+------------------------------------------------------------
+C5: FIRST-PASS NATURAL PERIODS
+------------------------------------------------------------
+
+Write a new function:
+
+natural_periods(
+    model,
+    added_mass_coeffs,
+    slack_tanks=None,
+    numerical_tolerance=...,
+) -> dict
+
+Required label:
+
+"First-pass estimate, not a motion analysis"
+
+HEAVE
+
+Use:
+
+T_heave = 2*pi*sqrt((m + a33) / C33)
+
+where:
+
+C33 = rho*g*Aw
+
+and:
+
+- m is total mass in kg
+- a33 is heave added mass in kg
+- rho is kg/m3
+- g is m/s2
+- Aw is equilibrium waterplane area in m2
+- C33 is in N/m
+
+ROLL AND PITCH
+
+Use:
+
+T_roll = 2*pi*sqrt((I44 + a44) / C44)
+
+T_pitch = 2*pi*sqrt((I55 + a55) / C55)
+
+where:
+
+C44 = W*GM_roll   with GM_roll  = hydrostatics()["gm_y"]   (heel about the x axis)
+
+C55 = W*GM_pitch  with GM_pitch = hydrostatics()["gm_x"]   (heel about the y axis)
+
+Use hydrostatics()["waterplane_area"] for Aw. Do not recompute it.
+
+and:
+
+- I44 and I55 are rigid-body inertias in kg m2
+- a44 and a55 are added inertias in kg m2
+- W is weight in N
+- GM is in m
+
+MASS DATA LIMITATION
+
+The current synthetic weights are a few lumped point masses (for example 260 t at z = 15 m), so the
+roll and pitch inertia from them is a lower bound and will be too small for a 105 m jacket.
+Report this in the warnings. Do not scale or adjust it.
+
+Element does not contain material density, dry mass or mass per unit length.
+
+Therefore:
+
+- Calculate rigid-body inertia from WeightItem objects only.
+- Do not infer structural member mass from Element geometry.
+- Report a warning that distributed structural inertia may be omitted.
+- If WeightItem information is inadequate to calculate a defensible inertia, return the rotational period as unavailable rather than guessing.
+
+ADDED MASS
+
+Added-mass coefficients or values must be supplied by the caller.
+
+No default may be described as a project value.
+
+If illustrative defaults are included, label each as "assumed for demonstration only" and make it replaceable by the caller.
+
+SLACK TANKS
+
+If slack-tank data are provided:
+
+- Calculate or accept the free-surface loss.
+- Reduce the relevant GM.
+- Report uncorrected and corrected GM.
+- Reject a non-positive corrected GM as an invalid restoring state.
+
+IMMERSION STATES
+
+Evaluate only physically valid equilibrium states.
+
+If an intended state has:
+
+- No equilibrium
+- Zero waterplane area
+- Inadequate buoyancy
+- Non-positive restoring stiffness
+
+return a clear invalid-state warning and do not calculate a period.
+
+The output must include:
+
+- label
+- heave_period_s
+- roll_period_s
+- pitch_period_s
+- waterplane_area_m2
+- mass_kg
+- weight_n
+- heave_added_mass_kg
+- roll_inertia_kgm2
+- pitch_inertia_kgm2
+- roll_added_inertia_kgm2
+- pitch_added_inertia_kgm2
+- roll_gm_m   (gm_y)
+- pitch_gm_m  (gm_x)
+- corrected roll and pitch GM
+- restoring coefficients
+- assumptions
+- warnings
+- validity flags
+
+Tests:
+
+- Simple closed-form heave case
+- Point masses with hand-calculated roll and pitch inertia
+- Zero waterplane area
+- Non-positive corrected GM
+- Invalid added-mass input
+- Input model remains unchanged
+
+
+------------------------------------------------------------
+C6: QUASI-STATIC ENVIRONMENTAL LOADS
+------------------------------------------------------------
+
+Add separate screening-level functions for:
+
+A. Depth-varying current drag on submerged members
+
+B. Tow-relative drag using the vector combination of:
+   - Current velocity
+   - Tow velocity
+
+C. One deterministic design wave using linear Airy kinematics and Morison drag and inertia
+
+EXISTING ENGINE LOADS (do not duplicate):
+
+JacketModel already includes wind force on exposed members, drag on submerged exposed members using
+params.cd_water and params.shielding, and a calm-water tow drag (tow_mode "auto", times params.tow_factor).
+The new functions are standalone screening calculations.
+- Current must be defined relative to still water. Do not add tow-speed drag already covered by tow_mode "auto".
+- If tow-relative drag is returned, state clearly that it is an alternative to the existing auto tow drag,
+  not an addition.
+- Do not modify JacketModel. Return the force and the centroid height so the owner can wire it into the
+  heeling moment separately.
+
+Required inputs must include, as applicable:
+
+- Fluid density
+- Current profile
+- Current heading
+- Tow speed
+- Tow heading
+- Wave height
+- Wave period
+- Wave heading
+- Water depth
+- Wave phase or stated design phase
+- Cd
+- Cm
+- Reference point
+- Numerical integration spacing
+
+Do not present any coefficient as a Conrad Mako project value.
+
+FORCE CONVENTION
+
+Return:
+
+- fx_kn
+- fy_kn
+- resultant_kn
+- heading_deg
+- centroid_x_m
+- centroid_y_m
+- centroid_z_m
+- mx_knm
+- my_knm
+- mz_knm
+- assumptions
+- excluded_effects
+- warnings
+- validity label
+
+Requirements:
+
+1. Combine current and tow velocity as vectors before calculating relative drag.
+
+2. Do not add scalar speeds unless explicitly collinear.
+
+3. Apply loads only to the submerged portion of exposed members.
+
+4. Avoid double-counting current and tow-relative drag.
+
+5. State whether normal-flow or total-flow drag is used for inclined members.
+
+6. State treatment of:
+   - Shielding
+   - Marine growth
+   - End effects
+   - Member intersections
+   - Wave stretching
+   - Free-surface clipping
+   - Inertia-force phase
+   - Structural motion
+
+7. If an effect is omitted, identify it as excluded rather than silently assigning a value.
+
+Required warning:
+
+"This is a deterministic, single-phase, quasi-static member-load screening calculation. It is not a time-domain simulation, spectral response analysis, coupled tow analysis, motion analysis or operability assessment. It does not establish allowable Hs or Tp."
+
+Tests:
+
+- Uniform current on a vertical cylinder with hand-calculated drag
+- Zero velocity
+- Opposing current and tow velocity
+- Heading-vector components
+- Airy-wave closed-form kinematics at a selected point
+- Invalid water depth or wave period
+- Source geometry remains unchanged
+
+
+------------------------------------------------------------
+C7: SPREADSHEET IMPORT
+------------------------------------------------------------
+
+requirements.txt currently contains: streamlit, numpy, pandas, plotly, reportlab. openpyxl is NOT listed.
+This task explicitly permits openpyxl. State clearly that requirements.txt must gain the line "openpyxl>=3.1"
+and give that line in INTEGRATION CHANGES. Then write:
+
+load_members_xlsx(file) -> (
+    elements,
+    weights,
+    openings,
+    errors,
+)
+
+Read these sheets:
+
+- Members
+- Weights
+- Openings
+
+Use dataclass field names as column names.
+
+Requirements:
+
+1. Return row-level errors.
+
+2. Never crash due to a bad input row.
+
+3. Preserve dataclass defaults for omitted optional columns.
+
+4. Do not silently convert invalid values.
+
+5. Identify:
+   - Sheet
+   - Excel row number
+   - Column
+   - Value
+   - Error code
+   - Message
+
+6. Add a function to create a blank template workbook containing:
+   - Members sheet
+   - Weights sheet
+   - Openings sheet
+   - Notes sheet
+   - One clearly labelled example row per data sheet
+
+7. Do not treat example rows as project data.
+
+8. Include in-memory workbook tests.
+
+DEPENDENCY RULE
+
+The only additional dependency permitted for this task is openpyxl, and only for XLSX reading and writing.
+
+If openpyxl is not installed and adding it is not allowed:
+
+- Do not provide non-working XLSX code.
+- State the limitation.
+- Provide a three-CSV import alternative using the permitted dependencies.
+
+
+------------------------------------------------------------
+C8: WHOLE-WORKFLOW TESTS
+------------------------------------------------------------
+
+Add tests for the existing application workflow.
+
+STREAMLIT TESTS
+
+Known limitation: the Sensitivity tab section C and D buttons have not been verified in the app.
+Do not write tests that depend on them. Report any element you cannot find instead of inventing a label.
+
+Use:
+
+streamlit.testing.v1.AppTest
+
+Requirements:
+
+1. Inspect app.py and use actual:
+   - Widget labels
+   - Button labels
+   - Tab names
+   - Result elements
+   - Session-state behaviour
+
+2. Do not invent UI labels.
+
+3. Test:
+   - App loads without an uncaught exception.
+   - Required input controls appear.
+   - Existing run or analyse action can be triggered.
+   - Results appear.
+   - Invalid input produces a controlled message instead of a crash.
+
+PDF TESTS
+
+Test:
+
+- PDF generation completes.
+- Returned data begin with b"%PDF".
+- Expected report section markers are present where reliable.
+
+Only test page count if a PDF-reading dependency is already installed and permitted.
+
+Do not add a new production dependency solely to count PDF pages.
+
+ENGINE TESTS
+
+Test:
+
+1. Synthetic baseline values using explicit tolerances:
+   - GM approximately 30.39 m
+   - Waterline approximately 84.15 m
+   - Emerged tank length approximately 5.85 m
+   - Ballast headroom approximately 25 t
+   - Waterplane response approximately 29 t/m
+
+2. Damaged condition:
+   - One buoyancy tank flooded
+   - Expected no-float result if confirmed by the current synthetic model
+
+3. Failed-float condition.
+
+4. All pre-existing tests continue to pass.
+
+5. Tests do not depend on synthetic values being exact beyond the current numerical resolution.
+
+
+============================================================
+PART D: FINAL VERIFICATION
+============================================================
+
+Before returning code, verify:
+
+1. Does:
+
+   python -m pytest -q
+
+   run successfully?
+
+2. Do all existing tests still pass?
+
+3. Have any existing signatures, fields or behaviours changed?
+
+4. Are all new code paths complete?
+
+5. Are formulas stated and dimensionally consistent?
+
+6. Are dynamics calculated internally in coherent SI units?
+
+7. Are all coefficients:
+   - Named
+   - Listed
+   - Labelled as user input, derived, sourced or assumed?
+
+8. Has any placeholder been presented as:
+   - A project value?
+   - A standard requirement?
+   - A certified acceptance criterion?
+
+9. Are input objects unchanged after each calculation?
+
+10. Are non-finite inputs controlled?
+
+11. Are physical failure and numerical failure reported separately?
+
+12. Are all limitations included in returned warnings?
+
+13. Has any repository push, commit or remote modification been attempted?
+
+The correct answer to item 13 must be no.
