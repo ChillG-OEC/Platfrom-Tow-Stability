@@ -8,6 +8,7 @@ from __future__ import annotations
 import inspect
 import json
 import math
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -20,7 +21,7 @@ import sensitivity as sv
 import viz
 from report import ASSUMPTIONS, APP_VERSION, build_pdf, fmt
 
-st.set_page_config(page_title="Jacket Wet-Tow Stability", page_icon="⚓", layout="wide")
+st.set_page_config(page_title="Jacket Wet-Tow Stability", page_icon=str(Path(__file__).with_name("oec_logo.png")) if Path(__file__).with_name("oec_logo.png").exists() else "⚓", layout="wide")
 
 _PLOTLY_HAS_WIDTH = "width" in inspect.signature(st.plotly_chart).parameters
 
@@ -211,7 +212,19 @@ if _up is not None:
 # ----------------------------------------------------------------------------
 # Header
 # ----------------------------------------------------------------------------
-st.title("⚓ Jacket Wet-Tow Stability")
+_LOGO = Path(__file__).with_name("oec_logo.png")
+if _LOGO.exists():
+    try:
+        st.logo(str(_LOGO), size="large")
+    except Exception:  # older Streamlit without st.logo
+        pass
+    _h1, _h2 = st.columns([1, 7], vertical_alignment="center")
+    with _h1:
+        st.image(str(_LOGO), width=130)
+    with _h2:
+        st.title("Jacket Wet-Tow Stability")
+else:
+    st.title("⚓ Jacket Wet-Tow Stability")
 st.caption("Screening tool: free-to-trim heel sweep for a floating jacket on buoyancy tanks, "
            "wind + tow-line heeling, downflooding, damaged case. Not a substitute for a checked calculation.")
 

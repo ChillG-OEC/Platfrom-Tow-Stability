@@ -6,6 +6,7 @@ from __future__ import annotations
 import datetime
 import io
 import math
+from pathlib import Path
 from xml.sax.saxutils import escape
 
 import numpy as np
@@ -49,7 +50,7 @@ def build_pdf(snap: dict, res: dict, meta: dict, prepared: str, checked: str, re
                         cap_deg=w["c_cap_deg"], df_min_deg=w["c_df_min_deg"],
                         clear_min_m=w.get("c_clear_min_m", 0.0), emerged_min_m=w.get("c_emerged_min_m", 0.0))
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=36, rightMargin=36, topMargin=36, bottomMargin=40,
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=36, rightMargin=36, topMargin=92, bottomMargin=40,
                             title="Jacket wet-tow stability - screening")
     ss_ = getSampleStyleSheet()
     h1 = ParagraphStyle("h1", parent=ss_["Heading1"], fontSize=15, textColor=colors.HexColor("#08306b"))
@@ -257,8 +258,18 @@ def build_pdf(snap: dict, res: dict, meta: dict, prepared: str, checked: str, re
     st_.append(P("This is a screening calculation. Results must be independently checked and the criteria "
                  "confirmed against the project design basis before use.", flag))
 
+    logo_path = Path(__file__).with_name("oec_logo.png")
+
     def footer(canvas, doc_):
         canvas.saveState()
+        if logo_path.exists():
+            lh = 40.0
+            lw = lh * 831.0 / 306.0
+            canvas.drawImage(str(logo_path), A4[0] - 36 - lw, A4[1] - 36 - lh, width=lw, height=lh,
+                             mask="auto", preserveAspectRatio=True)
+            canvas.setStrokeColor(colors.HexColor("#08306b"))
+            canvas.setLineWidth(0.6)
+            canvas.line(36, A4[1] - 36 - lh - 5, A4[0] - 36, A4[1] - 36 - lh - 5)
         canvas.setFont("Helvetica", 7)
         canvas.setFillColor(colors.HexColor("#666666"))
         canvas.drawString(36, 24, f"{w['project']} - DRAFT screening calculation")
