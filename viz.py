@@ -19,9 +19,9 @@ import jacket_stability as js
 # class -> (colour, opacity)
 STYLE = {
     "Buoyancy tank": ("#2f6fb0", 0.55),
-    "Leg / vertical": ("#4a4f57", 1.0),
-    "Horizontal brace": ("#8a9099", 1.0),
-    "Diagonal brace": ("#aab0b8", 1.0),
+    "Leg / vertical": ("#7a8594", 1.0),
+    "Horizontal brace": ("#a3acb8", 1.0),
+    "Diagonal brace": ("#c0c7d1", 1.0),
 }
 FLOODED = ("#d62728", 0.65)
 N_SIDES = 20
@@ -98,7 +98,10 @@ def camera_buttons(k: float = 1.0) -> list:
         return dict(eye=dict(x=eye[0] * k, y=eye[1] * k, z=eye[2] * k), up=dict(x=up[0], y=up[1], z=up[2]))
     views = [("Iso", cam((1.5, -1.6, 0.9))), ("Plan", cam((0.0, 0.001, 2.6), up=(0, 1, 0))),
              ("Side (from -y)", cam((0.0, -2.6, 0.25))), ("End (from +x)", cam((2.6, 0.0, 0.25)))]
-    return [dict(type="buttons", direction="right", x=1.0, y=1.02, xanchor="right", yanchor="bottom",
+    # left-aligned so they never sit under the Plotly toolbar (top right); neutral colours read in light and dark
+    return [dict(type="buttons", direction="right", x=0.0, y=1.02, xanchor="left", yanchor="bottom",
+                 pad=dict(l=0, r=0, t=0, b=0), bgcolor="rgba(127,127,127,0.22)",
+                 bordercolor="rgba(127,127,127,0.6)", borderwidth=1, font=dict(size=11), showactive=False,
                  buttons=[dict(label=n, method="relayout", args=[{"scene.camera": c}]) for n, c in views])]
 
 
@@ -148,7 +151,7 @@ def jacket_figure(elements: Sequence[js.Element], weights: Sequence[js.WeightIte
     if b_pt is not None:
         fig.add_trace(go.Scatter3d(x=[b_pt[0]], y=[b_pt[1]], z=[b_pt[2]], mode="markers+text", text=["B"],
                                    textposition="bottom center", name="CoB (B)",
-                                   marker=dict(size=4, color="#0b3d91", symbol="diamond")))
+                                   marker=dict(size=4, color="#4c9be8", symbol="diamond")))
     lines = list(params.lines) if params.lines else [js.Line(
         "Tow", tuple(params.tow_point), params.tow_heading_deg, params.tow_elevation_deg, "tow")]
     shown = set()
