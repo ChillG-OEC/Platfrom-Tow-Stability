@@ -23,6 +23,7 @@ import jacket_stability as js
 import metocean as mo
 
 _PLOTLY_HAS_WIDTH = "width" in inspect.signature(st.plotly_chart).parameters
+DEFAULT_CASE_DIR = Path(__file__).parent / "cases"      # empty or absent in the public repository
 GROUP_LABEL = {"leg": "Legs", "brace": "Braces", "tank": "Tanks", "other": "Other"}
 
 
@@ -42,6 +43,10 @@ def _read_raw():
         if path.strip():
             p = Path(path.strip()).expanduser()
             return json.loads(p.read_text(encoding="utf-8")), p.name
+        built_in = sorted(DEFAULT_CASE_DIR.glob("*.case.json")) if DEFAULT_CASE_DIR.is_dir() else []
+        if built_in:                      # private deployments ship their case file in cases/
+            st.caption(f"Loaded from the deployment: {built_in[0].name} (upload or enter a path above to use another).")
+            return json.loads(built_in[0].read_text(encoding="utf-8")), built_in[0].name
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         st.error(f"Could not read that case file: {exc}")
     return None, ""

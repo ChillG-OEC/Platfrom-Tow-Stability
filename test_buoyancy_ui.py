@@ -278,3 +278,14 @@ def test_tow_point_clears_when_x_is_set(tmp_path):
     at.session_state["p_tow_x"] = at.session_state["p_tow_x"] + 3.0
     at.run()
     assert "tow point" not in _strip(at)
+
+
+def test_case_file_in_cases_folder_loads_without_upload(tmp_path, monkeypatch):
+    import buoyancy_ui as ui
+    case = _budget_case()
+    (tmp_path / "x.case.json").write_text(json.dumps(case))
+    monkeypatch.setattr(ui, "DEFAULT_CASE_DIR", tmp_path)
+    at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=90)
+    at.run()
+    assert not at.exception
+    assert any("Loaded from the deployment: x.case.json" in c.value for c in at.caption)
