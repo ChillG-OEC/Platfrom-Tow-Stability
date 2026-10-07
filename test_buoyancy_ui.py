@@ -68,3 +68,21 @@ def test_current_preset_fills_the_tow_load_input(tmp_path):
     at.button(key="bu_cur_use").click().run()
     assert not at.exception
     assert abs(at.session_state["p_current_speed_kn"] - 2.0) < 1e-3
+
+
+def test_tow_plan_tab_uses_the_case_file_area(tmp_path):
+    case = _budget_case()
+    case["budget"]["sources"][0].update(od_mm=1000.0, length_m=100.0)
+    f = tmp_path / "c.case.json"
+    f.write_text(json.dumps(case))
+    at = _run(f)
+    assert not at.exception
+    assert any("Time for the approach" in m.label for m in at.metric)
+    t = [m for m in at.metric if m.label == "Tube drag area from the case file"][0]
+    assert t.value.replace(",", "").startswith("100")
+
+
+def test_tow_plan_tab_works_without_a_case_file():
+    at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=90).run()
+    assert not at.exception
+    assert any("Time for the approach" in m.label for m in at.metric)

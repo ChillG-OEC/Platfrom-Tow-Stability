@@ -228,8 +228,10 @@ def render() -> None:
                "this app: use a local run (or a private deployment) for project data.", icon="🔒")
     raw, fname = _read_raw()
     if raw is None:
+        st.session_state.pop("case_raw", None)
         st.info("Load a case file to begin. `docs/case_template.json` in the repository shows the layout (dummy numbers).")
         return
+    st.session_state["case_raw"] = raw                      # shared with the tow-plan tab
     key = f"{abs(hash(json.dumps(raw, sort_keys=True, default=str))) % 10**8}"
     st.markdown(f"Case: **{raw.get('name', fname)}**")
     if raw.get("budget"):

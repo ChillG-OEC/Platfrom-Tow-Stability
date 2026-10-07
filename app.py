@@ -19,6 +19,7 @@ import streamlit as st
 import jacket_stability as js
 import model_validation as mv
 import buoyancy_ui
+import towplan_ui
 import sensitivity as sv
 import viz
 from report import ASSUMPTIONS, APP_VERSION, build_pdf, fmt
@@ -232,9 +233,9 @@ else:
 st.caption("Screening tool: free-to-trim heel sweep for a floating jacket on buoyancy tanks, "
            "wind + tow-line heeling, downflooding, damaged case. Not a substitute for a checked calculation.")
 
-tab_in, tab_env, tab_geo, tab_res, tab_sens, tab_rep, tab_buoy = st.tabs(
+tab_in, tab_env, tab_geo, tab_res, tab_sens, tab_rep, tab_buoy, tab_tow = st.tabs(
     ["1 · Inputs", "2 · Environment, tow & criteria", "3 · Geometry check", "4 · Results", "5 · Sensitivity",
-     "6 · Report", "7 · Buoyancy (case file)"])
+     "6 · Report", "7 · Buoyancy (case file)", "8 · Tow plan (approach)"])
 
 # ----------------------------------------------------------------------------
 # Tab 1: inputs
@@ -1103,3 +1104,9 @@ with tab_buoy:
         buoyancy_ui.render()
     except Exception as _exc:    # this tab must never take the rest of the app down
         st.error(f"The buoyancy tab hit a problem: {_exc}")
+
+with tab_tow:
+    try:
+        towplan_ui.render()
+    except Exception as _exc:   # keep the other tabs usable
+        st.error(f"Tow plan tab failed: {_exc}")
