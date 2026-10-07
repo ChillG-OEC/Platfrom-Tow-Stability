@@ -1,0 +1,91 @@
+{
+  "name": "TEMPLATE - dummy numbers only, replace with project data kept outside the repository",
+  "datum": {
+    "z_offset_m": 92.4
+  },
+  "structure": {
+    "elements": [
+      {
+        "name": "L1",
+        "x1": 0,
+        "y1": 0,
+        "z1": -92.4,
+        "x2": 0,
+        "y2": 0,
+        "z2": 8.5,
+        "d_out": 1.0
+      }
+    ],
+    "weights": [
+      {
+        "item": "jacket",
+        "mass_t": 30.0,
+        "x": 0,
+        "y": 0,
+        "z": -50.0
+      }
+    ],
+    "openings": [
+      {
+        "name": "vent",
+        "x": 0,
+        "y": 0,
+        "z": 8.5
+      }
+    ]
+  },
+  "modules": [
+    {
+      "name": "leg",
+      "members": [
+        "L1"
+      ],
+      "z_lo": -92.4,
+      "z_hi": -40.0
+    },
+    {
+      "name": "tank",
+      "elements": [
+        {
+          "name": "T1",
+          "x1": 3,
+          "y1": 0,
+          "z1": -30,
+          "x2": 3,
+          "y2": 0,
+          "z2": 0,
+          "d_out": 3.0
+        }
+      ],
+      "weights": [
+        {
+          "item": "tank steel",
+          "mass_t": 5.0,
+          "x": 3,
+          "y": 0,
+          "z": -15
+        }
+      ],
+      "ballast_t": 0.0,
+      "note": "tank steel moves with the module"
+    }
+  ],
+  "states": {
+    "leg": "sealed",
+    "tank": "sealed"
+  },
+  "params": {
+    "water_depth_m": 91.3,
+    "tow_point": [
+      0,
+      0,
+      -50.0
+    ]
+  },
+  "criteria": {
+    "gm_min": 0.5,
+    "clear_min_m": 5.0
+  },
+  "reserve_min_pct": 10.0,
+  "note": "Layout example. Heights are on the file datum; datum.z_offset_m is added on load."
+}

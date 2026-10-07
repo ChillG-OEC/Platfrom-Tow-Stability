@@ -179,3 +179,21 @@ SACS) and compare GM, GZ and equilibrium draft.
 * Vent, hatch and other downflooding coordinates.
 * Tow point and bridle arrangement, tow speed, design wind, and the criteria to be met.
 * Any ballast with free surface (free-surface moments).
+
+## Buoyancy modules and case files
+
+The jacket structure and each source of buoyancy are separate items:
+
+* `buoyancy.py` - `Structure` (steel, no buoyancy) plus `BuoyancyModule` items: sealed members
+  (whole, or the part between two heights such as rip-out diaphragms) and tanks (own volume,
+  own steel weight, optional ballast). Each module is `sealed`, `off` or `damaged`.
+  `evaluate`, `sweep` (every combination) and `damage_cases` (flood one module at a time)
+  return plain rows.
+* `case_io.py` - load / save a case as JSON. Heights can be on the project datum;
+  `datum.z_offset_m` is added on load. See `docs/case_template.json` (dummy numbers).
+* `run_case.py` - `python run_case.py my.case.json [--sweep | --damage]`.
+
+Project data (weights, geometry, criteria) belongs in a case file kept outside the repository;
+`cases/`, `private/` and `*.case.json` are git-ignored.
+Elements have a `tank` flag (default True); sealed legs and braces are `tank=False`, so the
+"tank emerged length" check only looks at real tanks.

@@ -67,6 +67,8 @@ class Element:
     buoyant: bool = True     # contributes displacement (watertight)
     exposed: bool = True     # contributes wind area / tow drag
     flooded: bool = False    # damage case: loses buoyancy
+    tank: bool = True        # buoyant member counted as a buoyancy tank in the emerged-length check
+                             # (False for sealed legs / braces that only add displacement)
 
 
 @dataclass
@@ -384,7 +386,7 @@ def frame(psi: float, phi: float, theta: float) -> tuple[np.ndarray, np.ndarray,
 
 def member_kind(e: Element) -> str:
     """Display class of a member, from its flags and inclination."""
-    if e.buoyant:
+    if e.buoyant and e.tank:
         return "Buoyancy tank"
     a = np.asarray(e.p2, float) - np.asarray(e.p1, float)
     s = abs(a[2]) / max(float(np.linalg.norm(a)), 1e-12)
@@ -847,11 +849,12 @@ def float_check(model: "JacketModel", crit: Criteria) -> dict:
     zw = h["zw"]
     z_base, z_top = h["bbox_lo"][2], h["bbox_hi"][2]
     draft_total = zw - z_base
-    tanks = [r for r in h["members"] if r["status"] == "buoyant"]
+    tank_names = {e.name for e in model.elements if e.buoyant and e.tank}
+    tanks = [r for r in h["members"] if r["status"] == "buoyant" and r["name"] in tank_names]
     for r in tanks:
         r["emerged_m"] = r["length_m"] * (1.0 - r["sub_pct"] / 100.0)
     emerged_min = min((r["emerged_m"] for r in tanks), default=float("nan"))
-    tank_top = {e.name: max(e.p1[2], e.p2[2]) for e in model.elements if e.buoyant}
+    tank_top = {e.name: max(e.p1[2], e.p2[2]) for e in model.elements if e.buoyant and e.tank}
     depth = p.water_depth_m + p.tide_m if p.water_depth_m > 0 else None
     clearance = None if depth is None else depth - draft_total
     opens = [o["above_water_m"] for o in h["openings"]]
@@ -1196,7 +1199,7 @@ def elements_from_rows(rows: Sequence[dict]) -> list[Element]:
                 p2=(float(r["x2"]), float(r["y2"]), float(r["z2"])),
                 d_out=float(r["d_out"]), d_in=float(r.get("d_in") or 0.0),
                 buoyant=bool(r.get("buoyant", True)), exposed=bool(r.get("exposed", True)),
-                flooded=bool(r.get("flooded", False))))
+                flooded=bool(r.get("flooded", False)), tank=bool(r.get("tank", True))))
         except (KeyError, TypeError, ValueError):
             continue
     return out
