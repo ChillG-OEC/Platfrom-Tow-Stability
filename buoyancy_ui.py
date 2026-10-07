@@ -482,7 +482,7 @@ def _sizing_tab(s, mods, states, params, crit, rm, rm_dmg, key) -> None:
                                       weight_t="weight [t]", reserve_pct="reserve [%]", clearance_m="clearance [m]",
                                       gm_min_m="GM [m]", intact_passed="intact pass", damage_passed="damage passed",
                                       damage_total="damage cases", all_passed="all pass"))
-        st.plotly_chart(_window_figure(df, rm, rd, crit), use_container_width=True)
+        _show(_window_figure(df, rm, rd, crit))
         st.dataframe(show.drop(columns=["floats"]).round(2), hide_index=True)
         st.caption("Bigger is not always better: very large tanks can raise the reserve but lose GM or clearance. "
                    "The table shows each size so you can see the window.")
