@@ -107,13 +107,12 @@ def records(df: pd.DataFrame, bools: list[str] | None = None) -> list[dict]:
     d = df.copy().dropna(how="all")
     for c in bools or []:
         if c in d:
-            d[c] = d[c].fillna(False).astype(bool)
+            d[c] = [parse_bool(x, False, c) for x in d[c]]
     d = d.replace({np.nan: None})
     return d.to_dict("records")
 
 
-def _num_ok(v) -> bool:
-    return v is not None and not (isinstance(v, float) and math.isnan(v))
+from parsing import num_ok as _num_ok, parse_bool
 
 
 # ----------------------------------------------------------------------------
@@ -197,7 +196,7 @@ def apply_snapshot(data: dict) -> None:
     el = pd.DataFrame(data.get("elements", []), columns=E_COLS)
     el["tank"] = el["tank"].fillna(True)        # files saved before the flag existed: every buoyant member counts as a tank
     for c in E_BOOL:
-        el[c] = el[c].fillna(False).astype(bool)
+        el[c] = [parse_bool(x, c == "tank", f"Member '{n}', column '{c}'") for x, n in zip(el[c], el["name"])]
     ss.t_elems = el
     ss.t_open = pd.DataFrame(data.get("openings", []), columns=O_COLS)
     ln = pd.DataFrame(data.get("lines", []), columns=LINE_COLS)
@@ -451,6 +450,15 @@ snap = make_snapshot(weights_df, elems_df, open_df, lines_df)
 cur_hash = snap_hash(snap)
 els, wts, ops, params, crit = parts_from_snapshot(snap)
 errors, warnings = js.validate_inputs(els, wts, ops, params)
+_n_w_bad = len([r for r in records(weights_df) if not all(_num_ok(r.get(c)) for c in W_COLS[1:])])
+_n_e_bad = len([r for r in records(elems_df, E_BOOL) if not all(_num_ok(r.get(c)) for c in E_COLS[1:8])]) if len(elems_df) else 0
+if _n_w_bad:
+    warnings = list(warnings) + [f"{_n_w_bad} weight row(s) are ignored because a value is missing or not a number."]
+if _n_e_bad:
+    warnings = list(warnings) + [f"{_n_e_bad} member row(s) are ignored because a coordinate or diameter is missing or not a number."]
+_dup = sorted({e.name for e in els if [x.name for x in els].count(e.name) > 1})
+if _dup:
+    errors = list(errors) + [f"Member names must be unique. Duplicated: {', '.join(_dup[:6])}" + (" ..." if len(_dup) > 6 else "")]
 for _on, _val, _what in (("c_df_on", "c_df_min_deg", "downflood angle"), ("c_clear_on", "c_clear_min_m", "seabed clearance"),
                          ("c_emerged_on", "c_emerged_min_m", "tank emergence")):
     if st.session_state.get(_on) and float(st.session_state.get(_val, 0.0)) <= 0.0:

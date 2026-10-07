@@ -45,6 +45,8 @@ from typing import Callable, Optional, Sequence
 
 import numpy as np
 
+from parsing import parse_bool
+
 G_ACC: float = 9.80665      # m/s^2
 KN_TO_MS: float = 0.514444  # knots -> m/s
 EZ: np.ndarray = np.array([0.0, 0.0, 1.0])
@@ -1281,8 +1283,10 @@ def elements_from_rows(rows: Sequence[dict]) -> list[Element]:
                 p1=(float(r["x1"]), float(r["y1"]), float(r["z1"])),
                 p2=(float(r["x2"]), float(r["y2"]), float(r["z2"])),
                 d_out=float(r["d_out"]), d_in=float(r.get("d_in") or 0.0),
-                buoyant=bool(r.get("buoyant", True)), exposed=bool(r.get("exposed", True)),
-                flooded=bool(r.get("flooded", False)), tank=bool(r.get("tank", True))))
+                buoyant=parse_bool(r.get("buoyant"), True), exposed=parse_bool(r.get("exposed"), True),
+                flooded=parse_bool(r.get("flooded"), False), tank=parse_bool(r.get("tank"), True)))
+            if not all(math.isfinite(v) for v in (*out[-1].p1, *out[-1].p2, out[-1].d_out, out[-1].d_in)):
+                out.pop()                      # a coordinate or diameter is infinite or NaN: row ignored
         except (KeyError, TypeError, ValueError):
             continue
     return out
