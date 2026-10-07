@@ -1,0 +1,56 @@
+"""The buoyancy tab (7) loads a case file and shows budget, environment and module results."""
+import json
+from pathlib import Path
+
+from streamlit.testing.v1 import AppTest
+
+ROOT = Path(__file__).parent
+
+
+def _run(path):
+    at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=90)
+    at.run()
+    assert not at.exception
+    at.text_input(key="bu_path").set_value(str(path)).run()
+    return at
+
+
+def _budget_case():
+    return {
+        "name": "unit budget case", "structure": {"elements": [], "weights": []},
+        "reserve_min_pct": 10.0,
+        "budget": {
+            "weight_cases": [{"name": "dry", "weight_t": 1000.0, "tank_steel_t": 100.0}],
+            "sources": [{"name": "legs", "group": "leg", "volume_m3": 500.0 / 1.025, "share_default": 1.0},
+                        {"name": "tank", "group": "tank", "volume_m3": 0.0, "share_default": 1.0}],
+            "tank_steel_in_weight_t": 100.0},
+        "environment": {"operating_limits": {"Hs limit": "1.0 m"},
+                        "monthly": [{"Month": "April", "Hs mean [m]": 0.6}], "notes": ["note"]}}
+
+
+def test_budget_and_environment_render(tmp_path):
+    p = tmp_path / "b.case.json"
+    p.write_text(json.dumps(_budget_case()))
+    at = _run(p)
+    assert not at.exception
+    labels = {m.label: m.value for m in at.metric}
+    assert labels["Weight (factored)"] == "1000.0 t"
+    assert labels["Buoyancy capacity"] == "500.0 t"
+    assert labels["Tank volume needed in total"].startswith("585")        # 600 t / 1.025 = 585 m3
+    assert any("Hs limit" in m.label for m in at.metric)
+    assert any("No member geometry" in i.value for i in at.info)
+
+
+def test_modules_section_on_template():
+    at = _run(ROOT / "docs" / "case_template.json")
+    assert not at.exception
+    labels = {m.label for m in at.metric}
+    assert {"Draft", "GM", "Reserve"} <= labels
+
+
+def test_bad_file_reports_error(tmp_path):
+    p = tmp_path / "bad.json"
+    p.write_text("{not json")
+    at = _run(p)
+    assert not at.exception
+    assert any("Could not read" in e.value for e in at.error)
