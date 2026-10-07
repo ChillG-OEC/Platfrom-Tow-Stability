@@ -86,6 +86,8 @@ def build_pdf(snap: dict, res: dict, meta: dict, prepared: str, checked: str, re
     import json as _json
     if _json.dumps(snap["elements"], sort_keys=True, default=str) == _json.dumps(js.synthetic_inputs()["elements"], sort_keys=True, default=str):
         st_.append(Paragraph("SYNTHETIC ILLUSTRATIVE CASE - geometry, weights and CoG are OEC assumptions, not project data", flag))
+    for _fl in snap.get("flags", []):
+        st_.append(Paragraph(_fl, flag))
     st_.append(Spacer(1, 6))
     st_.append(tbl([
         [P("Project", bold), P(w["project"]), P("Scenario", bold), P("DAMAGED" if res["damaged"] else "INTACT")],

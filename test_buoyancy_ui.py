@@ -185,3 +185,20 @@ def test_structure_weights_and_cog_are_shown(tmp_path):
     assert m["Structure weight"] == "40.00 t"
     assert m["CoG x"] == "1.000 m" and m["CoG y"] == "0.500 m"
     assert m["CoG z (EL)"] == "5.00 m"           # body z 15 above base, datum offset 10 => EL 5
+
+
+def test_synthetic_modules_are_flagged_after_hand_over(tmp_path):
+    case = _budget_case()
+    case["structure"] = {
+        "elements": [dict(name="Leg x0 A can00", x1=0, y1=0, z1=0, x2=0, y2=0, z2=50, d_out=1.0, d_in=0.9)],
+        "weights": [dict(item="Main structure", mass_t=10.0, x=0, y=0, z=20.0)]}
+    case["modules"] = [dict(name="Top tank (synthetic)", note="SYNTHETIC placeholder, replace",
+                            elements=[dict(name="t", x1=0, y1=0, z1=10, x2=0, y2=0, z2=30, d_out=2.0)],
+                            weights=[dict(item="ts", mass_t=1.0, x=0, y=0, z=20)])]
+    p = tmp_path / "f.case.json"
+    p.write_text(json.dumps(case))
+    at = _run(p)
+    [b for b in at.button if b.key and b.key.startswith("bu_send_")][0].click().run()
+    assert not at.exception
+    assert at.session_state["data_flags"] == ["SYNTHETIC placeholder: Top tank (synthetic)"]
+    assert any("SYNTHETIC placeholder" in w.value for w in at.sidebar.warning)

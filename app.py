@@ -145,6 +145,7 @@ def make_snapshot(weights_df, elems_df, open_df, lines_df=None) -> dict:
         elements=records(elems_df, E_BOOL),
         openings=[r for r in records(open_df) if all(_num_ok(r.get(c)) for c in O_COLS[1:])],
         lines=line_rows(lines_df) if lines_df is not None else [],
+        flags=[str(x) for x in ss.get("data_flags", [])],
         fsc_m=(float(ss["p_fsm"]) / w_tot) if w_tot > 0 else 0.0,
     )
 
@@ -195,6 +196,7 @@ def apply_snapshot(data: dict) -> None:
     ss.t_open = pd.DataFrame(data.get("openings", []), columns=O_COLS)
     ln = pd.DataFrame(data.get("lines", []), columns=LINE_COLS)
     ss.t_lines = ln if len(ln) else empty_lines()
+    ss["data_flags"] = [str(x) for x in data.get("flags", [])]
     ss.ver += 1
     ss.res = None
 
@@ -220,7 +222,7 @@ if _pend:
     _w = {k: v for k, v in _pend["widgets"].items() if k in DEFAULTS}
     _w["project"] = str(_pend["name"])[:120]
     apply_snapshot(dict(widgets=_w, weights=_pend["weights"], elements=_pend["elements"], openings=_pend["openings"],
-                        lines=[]))
+                        lines=[], flags=_pend.get("flags", [])))
     st.session_state["send_case_done"] = _pend["name"]
     st.session_state["p_fsm"] = 0.0
     st.session_state["a_scenario"] = "Damaged (flooded elements lose buoyancy)" if _pend.get("damaged") else "Intact"
@@ -443,6 +445,8 @@ is_example = any(_sj == json.dumps(f()["elements"], sort_keys=True, default=str)
                  for f in (js.example_inputs, js.synthetic_inputs))
 if is_example:
     st.sidebar.warning("Tables hold the SYNTHETIC illustrative jacket - not project data.")
+for _f in st.session_state.get("data_flags", []):
+    st.sidebar.warning(_f)
 for e in errors:
     st.sidebar.error(e)
 run = st.sidebar.button("▶ Run analysis", type="primary", disabled=bool(errors))

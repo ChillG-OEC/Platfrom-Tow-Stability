@@ -376,7 +376,9 @@ def _send_section(case: dict, key: str) -> None:
         widgets={"p_depth_m": p.water_depth_m, "p_tide_m": p.tide_m, "c_gm_min": c.gm_min, "c_clear_min_m": c.clear_min_m,
                  "c_emerged_min_m": 0.0, "p_tow_x": min(xs), "p_tow_y": 0.5 * (min(ys) + max(ys)),
                  "p_tow_z": min(zs) + 0.8 * (max(zs) - min(zs))},
-        damaged=damaged)
+        damaged=damaged,
+        flags=[f"SYNTHETIC placeholder: {m.name}" for m in case["modules"]
+               if "SYNTHETIC" in str(m.note).upper() and states.get(m.name, "off") != "off"])
     st.caption(f"Sends {len(els)} members, {len(wts)} weight items ({sum(w.mass_t for w in wts):,.0f} t) and the "
                "module states chosen above. The tow-line attachment is set to a PLACEHOLDER at the front centre of the "
                "platform, near the waterline: replace it in tab 2 with the real tow point. Tank-emerged check is turned off "
