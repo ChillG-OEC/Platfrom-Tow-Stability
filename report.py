@@ -16,9 +16,10 @@ from reportlab.graphics.shapes import Drawing, String
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import KeepTogether, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 import jacket_stability as js
+import report_figs as rf
 
 APP_VERSION = "1.0"
 
@@ -199,7 +200,23 @@ def build_pdf(snap: dict, res: dict, meta: dict, prepared: str, checked: str, re
         d.add(String(300, 212, "blue = GZ    red dashed = heeling arm", fontSize=8))
         st_.append(d)
 
-    st_.append(Paragraph("4. Input data", h2))
+    try:
+        els_f = js.elements_from_rows(snap["elements"])
+        if els_f:
+            st_.append(PageBreak())
+            st_.append(Paragraph("4. Geometry and floating attitude", h2))
+            st_.append(P("Member centre-lines drawn with stroke width following diameter (blue = tanks, dark = legs, "
+                         "grey = braces, red = flooded). Leg names are grid names where the members carry them.", sml))
+            st_.append(rf.figure_row(els_f, labels=True, height=300, title_prefix="As built - "))
+            for att in meta.get("attitudes", []):
+                st_.append(Spacer(1, 4))
+                st_.append(KeepTogether([P(att["title"], bold),
+                                         rf.figure_row(els_f, rot=att["rot"], zw=att["zw"], g_pt=att.get("G"),
+                                                       b_pt=att.get("B"), height=300, views=("iso", "side", "end"))]))
+    except Exception as _exc:          # a drawing problem must never stop the report
+        st_.append(P(f"Figures could not be drawn: {_exc}", sml))
+
+    st_.append(Paragraph("5. Input data", h2))
     st_.append(P("Weights", bold))
     wd = [[HP(c) for c in ("Item", "Mass t", "x m", "y m", "z m")]]
     for r in snap["weights"]:
@@ -253,7 +270,7 @@ def build_pdf(snap: dict, res: dict, meta: dict, prepared: str, checked: str, re
     ]
     st_.append(tbl([[P(a_, sml), P(b_, sml)] for a_, b_ in pd_], [150, 380], header=False))
 
-    st_.append(Paragraph("5. Assumptions and limitations", h2))
+    st_.append(Paragraph("6. Assumptions and limitations", h2))
     for t in ASSUMPTIONS:
         st_.append(Paragraph("• " + escape(t), sml))
     st_.append(Spacer(1, 6))

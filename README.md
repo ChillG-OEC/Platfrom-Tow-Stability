@@ -20,6 +20,7 @@ placeholders. Confirm both before anything goes into a client brief.
 | `viz.py` | 3D jacket drawing (solid tubes, waterline, CoG/CoB, tow and wind arrows) |
 | `buoyancy.py`, `case_io.py`, `buoyancy_ui.py` | Buoyancy modules, case files and tab 7 (budget, environment, platform, modules, tank sizing) |
 | `metocean.py` | Operability screen from percentile tables (Hs, wind) |
+| `report_figs.py` | Vector 3D-style views (isometric, elevation, end, plan, waterline, G and B) for the PDF report |
 | `towplan.py`, `towplan_ui.py` | Tab 8: 1000 m to 100 m approach, tow vessels only |
 | `test_jacket_stability.py` | Validation tests (`pytest -q`) |
 | `requirements.txt` | streamlit, numpy, pandas, plotly, reportlab |

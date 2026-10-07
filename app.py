@@ -62,9 +62,9 @@ DEFAULTS = {
 }
 
 W_COLS = ["item", "mass_t", "x", "y", "z"]
-E_COLS = ["name", "x1", "y1", "z1", "x2", "y2", "z2", "d_out", "d_in", "buoyant", "exposed", "flooded"]
+E_COLS = ["name", "x1", "y1", "z1", "x2", "y2", "z2", "d_out", "d_in", "buoyant", "exposed", "flooded", "tank"]
 O_COLS = ["name", "x", "y", "z"]
-E_BOOL = ["buoyant", "exposed", "flooded"]
+E_BOOL = ["buoyant", "exposed", "flooded", "tank"]
 LINE_COLS = ["name", "x", "y", "z", "heading_deg", "elevation_deg", "type", "tension_kn", "share"]
 LINE_TYPES = ["Fixed pull", "Tow leg"]
 
@@ -83,6 +83,7 @@ def init_state() -> None:
         ss.ver = 0
         ss.t_weights = pd.DataFrame(EX["weights"], columns=W_COLS)
         ss.t_elems = pd.DataFrame(EX["elements"], columns=E_COLS)
+        ss.t_elems["tank"] = ss.t_elems["tank"].fillna(True).astype(bool)
         ss.t_open = pd.DataFrame(EX["openings"], columns=O_COLS)
         ss.t_lines = empty_lines()
         ss.res = None
@@ -142,7 +143,7 @@ def make_snapshot(weights_df, elems_df, open_df, lines_df=None) -> dict:
         version=APP_VERSION,
         widgets={k: ss[k] for k in PARAM_KEYS},
         weights=w_rows,
-        elements=records(elems_df, E_BOOL),
+        elements=records(elems_df.assign(tank=elems_df["tank"].fillna(True)) if "tank" in elems_df else elems_df, E_BOOL),
         openings=[r for r in records(open_df) if all(_num_ok(r.get(c)) for c in O_COLS[1:])],
         lines=line_rows(lines_df) if lines_df is not None else [],
         flags=[str(x) for x in ss.get("data_flags", [])],
@@ -190,6 +191,7 @@ def apply_snapshot(data: dict) -> None:
             ss[k] = 0.0          # files saved before the set-down check existed: check off
     ss.t_weights = pd.DataFrame(data.get("weights", []), columns=W_COLS)
     el = pd.DataFrame(data.get("elements", []), columns=E_COLS)
+    el["tank"] = el["tank"].fillna(True)        # files saved before the flag existed: every buoyant member counts as a tank
     for c in E_BOOL:
         el[c] = el[c].fillna(False).astype(bool)
     ss.t_elems = el
@@ -296,6 +298,8 @@ with tab_in:
             "buoyant": st.column_config.CheckboxColumn("Buoyant"),
             "exposed": st.column_config.CheckboxColumn("Exposed"),
             "flooded": st.column_config.CheckboxColumn("Flooded (damage)"),
+            "tank": st.column_config.CheckboxColumn("Tank", help="Buoyant members flagged as tanks count for the "
+                                                    "minimum tank length above water. Sealed legs and braces are not tanks."),
         })
 
     st.subheader("Downflooding points")
@@ -1105,7 +1109,27 @@ with tab_rep:
         prepared = r1.text_input("Prepared by", value=st.session_state.engineer, key="rep_prepared")
         checked = r2.text_input("Checked by", value="", key="rep_checked")
         rev = r3.text_input("Revision", value="A", key="rep_rev")
-        pdf = build_pdf(st.session_state.res_snap, res, st.session_state.get("res_meta", {}), prepared, checked, rev)
+        meta_ = dict(st.session_state.get("res_meta", {}))
+        try:      # floating attitudes for the report figures, from the inputs of the last run
+            _e, _w, _o, _p, _c = parts_from_snapshot(st.session_state.res_snap)
+            _m = js.JacketModel(_e, _w, _o, _p, damaged=bool(res["damaged"]))
+            _h = _m.hydrostatics()
+            _att = []
+            _s0 = _m.attitude_state(0.0, 0.0, _h["trim_deg"])
+            if _s0:
+                _att.append(dict(title=f"Floating level, no wind or tow: draft {_h['draft']:.2f} m, trim {_h['trim_deg']:.2f} deg",
+                                 rot=_s0["rot"], zw=_s0["zw"], G=_s0["G"], B=_s0["B"]))
+            _g = next(x for x in res["heads"] if x["beta"] == res["summary"]["governing_beta"])
+            if _g["analysis"]["theta_s"] is not None:
+                _s1 = _m.attitude_state(_g["beta"], _g["analysis"]["theta_s"], _g["analysis"]["trim_at_s"])
+                if _s1:
+                    _att.append(dict(title=f"Static equilibrium, governing wind toward {_g['beta']:.0f} deg: heel "
+                                           f"{_g['analysis']['theta_s']:.1f} deg, trim {_g['analysis']['trim_at_s']:.2f} deg",
+                                     rot=_s1["rot"], zw=_s1["zw"], G=_s1["G"], B=_s1["B"]))
+            meta_["attitudes"] = _att
+        except Exception:
+            pass
+        pdf = build_pdf(st.session_state.res_snap, res, meta_, prepared, checked, rev)
         st.download_button("📄 Download draft report (A4 PDF)", data=pdf, file_name="Jacket_tow_stability_draft.pdf",
                            mime="application/pdf")
         with st.expander("Assumptions and limitations"):
