@@ -20,6 +20,7 @@ import budget as bd
 import buoyancy as bu
 import case_io
 import jacket_stability as js
+import metocean as mo
 
 _PLOTLY_HAS_WIDTH = "width" in inspect.signature(st.plotly_chart).parameters
 GROUP_LABEL = {"leg": "Legs", "brace": "Braces", "tank": "Tanks", "other": "Other"}
@@ -139,6 +140,25 @@ def _environment_section(raw: dict) -> None:
         st.dataframe(pd.DataFrame(e["monthly"]), hide_index=True)
     if e.get("tide"):
         st.dataframe(pd.DataFrame([e["tide"]]), hide_index=True)
+    rows = e.get("monthly") or []
+    if rows and all(k in rows[0] for k in ("Hs P10 [m]", "Wind P1 [m/s]")):
+        st.markdown("**Operability against the limits** (share of time below, from the percentile table)")
+        c1, c2 = st.columns(2)
+        hs = c1.number_input("Hs limit [m]", 0.1, 10.0, 1.0, 0.1, key="bu_hs_lim")
+        wk = c2.number_input("Wind limit, 1-min mean [kn]", 1.0, 100.0, 20.0, 1.0, key="bu_wind_lim")
+        ops = [mo.operability(r, hs, wk) for r in rows]
+        df = pd.DataFrame(ops).rename(columns={"month": "Month", "wind_limit_10min_ms": "Limit as 10-min wind [m/s]",
+                                               "below_hs_pct": "Hs below limit [%]", "below_wind_pct": "Wind below limit [%]",
+                                               "below_both_pct_low": "Both, independent [%]",
+                                               "below_both_pct_high": "Both, fully correlated [%]"})
+        st.dataframe(df[["Month", "Limit as 10-min wind [m/s]", "Hs below limit [%]", "Wind below limit [%]",
+                         "Both, independent [%]", "Both, fully correlated [%]"]].style.format(
+            {c: "{:.1f}" if "%" in c else "{:.2f}" for c in df.columns if c != "Month" and c in
+             ["Limit as 10-min wind [m/s]", "Hs below limit [%]", "Wind below limit [%]", "Both, independent [%]",
+              "Both, fully correlated [%]"]}), hide_index=True)
+        st.caption("Interpolated between mean, P10, P1 and maximum (log in probability), so a screen only. The 1-min limit is "
+                   "converted to a 10-min mean with the ISO 19901-1 gust model. The table has no persistence: a tow window "
+                   "of several days needs a hindcast time series from Fugro.")
     for n in e.get("notes", []):
         st.caption("• " + str(n))
 
