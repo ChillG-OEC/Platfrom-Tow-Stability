@@ -289,3 +289,15 @@ def test_case_file_in_cases_folder_loads_without_upload(tmp_path, monkeypatch):
     at.run()
     assert not at.exception
     assert any("Loaded from the deployment: x.case.json" in c.value for c in at.caption)
+
+
+def test_changed_inputs_supersede_the_result_and_block_the_report():
+    at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=120)
+    at.run()
+    at.sidebar.button[[b.label for b in at.sidebar.button].index("▶ Run analysis")].click().run()
+    assert not at.exception
+    assert not any("Superseded" in e.value for e in at.error)
+    at.session_state["c_gm_min"] = 5.5                               # a criterion edit after the run
+    at.run()
+    assert any("Superseded result" in e.value for e in at.error)
+    assert not any("meet the criteria" in s.value for s in at.success)

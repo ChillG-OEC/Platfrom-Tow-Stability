@@ -691,11 +691,17 @@ with tab_res:
     if res is None:
         st.info("Press **Run analysis** in the sidebar.")
     else:
-        if st.session_state.res_hash != cur_hash:
-            st.warning("Inputs have changed since this analysis was run. Press Run analysis to update.")
+        stale = st.session_state.res_hash != cur_hash
+        rcrit = parts_from_snapshot(st.session_state.res_snap)[4]     # criteria the run was made with
+        if stale:
+            st.error("**Superseded result.** The inputs or criteria have changed since this analysis was run. The values below "
+                     "belong to the earlier run, pass/fail is hidden, and the report and curve export are disabled. "
+                     "Press Run analysis to update.")
         S, U = res["summary"], res["upright"]
         scen = "DAMAGED" if res["damaged"] else "INTACT"
-        if S["passed"]:
+        if stale:
+            pass
+        elif S["passed"]:
             st.success(f"{scen}: all headings meet the criteria set in tab 2.")
         else:
             st.error(f"{scen}: one or more headings do NOT meet the criteria. Governing wind heading "
@@ -707,9 +713,9 @@ with tab_res:
                        "assessed range - results at those angles are unreliable.")
 
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Min GM", f"{S['gm_min']:.2f} m", help=f"Criterion ≥ {crit.gm_min:.2f} m (small-angle, free to trim)")
-        m2.metric("Max static heel", fmt(S["heel_max"], 1, "°"), help=f"Criterion ≤ {crit.heel_max_deg:.1f}°")
-        m3.metric("Min area ratio", fmt(S["ratio_min"], 2), help=f"Criterion ≥ {crit.ratio_min:.2f}")
+        m1.metric("Min GM", f"{S['gm_min']:.2f} m", help=f"Criterion ≥ {rcrit.gm_min:.2f} m (small-angle, free to trim)")
+        m2.metric("Max static heel", fmt(S["heel_max"], 1, "°"), help=f"Criterion ≤ {rcrit.heel_max_deg:.1f}°")
+        m3.metric("Min area ratio", fmt(S["ratio_min"], 2), help=f"Criterion ≥ {rcrit.ratio_min:.2f}")
         m4.metric("Min downflood angle", fmt(S["df_min"], 1, "°") if S["df_min"] is not None else "n/a")
         n1, n2, n3, n4 = st.columns(4)
         n1.metric("Line pull (net horizontal)", fmt(S["tow_kn"], 0, " kN") if S["tow_kn"] is not None else "n/a",
@@ -721,7 +727,9 @@ with tab_res:
         F = res.get("float")
         if F is not None:
             st.markdown("**Set-down float check** (level, no wind or tow)")
-            if F["passed"]:
+            if stale:
+                pass
+            elif F["passed"]:
                 st.success("Set-down float condition meets the criteria set in tab 2.")
             else:
                 st.error("Set-down float condition does NOT meet the criteria set in tab 2 (or has no stable upright attitude).")
@@ -729,9 +737,9 @@ with tab_res:
             f1.metric("Waterline above base", f"{F['draft_total']:.2f} m", help="Waterline height above the lowest point of the structure.")
             f2.metric("Seabed clearance", fmt(F["clearance"], 2, " m") if F["clearance"] is not None else "n/a",
                       help=("Water depth + tide - waterline height. " if F["clearance"] is not None else "Enter a water depth in tab 2.")
-                      + (f"Criterion ≥ {crit.clear_min_m:.2f} m" if crit.clear_min_m > 0 else ""))
+                      + (f"Criterion ≥ {rcrit.clear_min_m:.2f} m" if rcrit.clear_min_m > 0 else ""))
             f3.metric("Min tank above water", fmt(F["emerged_min"], 2, " m"),
-                      help=f"Criterion ≥ {crit.emerged_min_m:.2f} m" if crit.emerged_min_m > 0 else None)
+                      help=f"Criterion ≥ {rcrit.emerged_min_m:.2f} m" if rcrit.emerged_min_m > 0 else None)
             f4.metric("Freeboard to top of jacket", f"{F['freeboard_top']:.1f} m")
             g1, g2, g3, g4 = st.columns(4)
             g1.metric("GM (level, no loads)", f"{F['gm_min']:.2f} m")
@@ -757,14 +765,14 @@ with tab_res:
                 "Area ratio": fmt(a["ratio"], 2),
                 "GZmax [m] @ [°]": f"{fmt(a['gz_max'], 2)} @ {fmt(a['phi_gz_max'])}",
                 "Line pull [kN]": fmt(a["tow_kn"], 0), "Wind [kN]": fmt(a["wind_kn"], 0),
-                "Status": "PASS" if a["passed"] else "FAIL"})
+                "Status": "superseded" if stale else ("PASS" if a["passed"] else "FAIL")})
         st.dataframe(pd.DataFrame(rows), hide_index=True)
 
         labels = [f"{h['beta']:.0f}°" for h in res["heads"]]
         gov = labels.index(f"{S['governing_beta']:.0f}°")
         sel = st.selectbox("Heading to plot", labels, index=gov)
         hsel = res["heads"][labels.index(sel)]
-        show(curve_figure(hsel, crit))
+        show(curve_figure(hsel, rcrit))
         if hsel["analysis"]["note"]:
             st.caption(hsel["analysis"]["note"])
         if hsel["analysis"]["sunk_beyond"] is not None:
@@ -774,12 +782,12 @@ with tab_res:
         st.markdown(f"**Technical data - wind toward {hsel['beta']:.0f}°**")
         c_l, c_r = st.columns(2)
         with c_l:
-            crow = [("GM (small angle)", f"≥ {crit.gm_min:.2f} m", fmt(an_s["gm"], 2, " m"), an_s["pass_gm"]),
-                    ("Static heel", f"≤ {crit.heel_max_deg:.1f}°", fmt(an_s["theta_s"], 1, "°"), an_s["pass_heel"]),
-                    ("Area ratio", f"≥ {crit.ratio_min:.2f}", fmt(an_s["ratio"], 2), an_s["pass_ratio"])]
-            if crit.df_min_deg > 0:
-                crow.append(("Downflood angle", f"≥ {crit.df_min_deg:.1f}°", fmt(an_s["theta_df"], 1, "°"), an_s["pass_df"]))
-            st.dataframe(pd.DataFrame([dict(Criterion=a, Required=b, Actual=c, Status="PASS" if d else "FAIL")
+            crow = [("GM (small angle)", f"≥ {rcrit.gm_min:.2f} m", fmt(an_s["gm"], 2, " m"), an_s["pass_gm"]),
+                    ("Static heel", f"≤ {rcrit.heel_max_deg:.1f}°", fmt(an_s["theta_s"], 1, "°"), an_s["pass_heel"]),
+                    ("Area ratio", f"≥ {rcrit.ratio_min:.2f}", fmt(an_s["ratio"], 2), an_s["pass_ratio"])]
+            if rcrit.df_min_deg > 0:
+                crow.append(("Downflood angle", f"≥ {rcrit.df_min_deg:.1f}°", fmt(an_s["theta_df"], 1, "°"), an_s["pass_df"]))
+            st.dataframe(pd.DataFrame([dict(Criterion=a, Required=b, Actual=c, Status="superseded" if stale else ("PASS" if d else "FAIL"))
                                        for a, b, c, d in crow]), hide_index=True)
         with c_r:
             if an_s["theta_s"] is not None:
@@ -807,8 +815,8 @@ with tab_res:
                 st.info("No static equilibrium at this heading.")
 
         ratios = [h["analysis"]["ratio"] or 0.0 for h in res["heads"]]
-        fb = go.Figure(go.Bar(x=labels, y=ratios, marker_color=["#2ca02c" if r >= crit.ratio_min else "#d62728" for r in ratios]))
-        fb.add_hline(y=crit.ratio_min, line=dict(dash="dash"), annotation_text=f"required {crit.ratio_min:.2f}")
+        fb = go.Figure(go.Bar(x=labels, y=ratios, marker_color=["#2ca02c" if r >= rcrit.ratio_min else "#d62728" for r in ratios]))
+        fb.add_hline(y=rcrit.ratio_min, line=dict(dash="dash"), annotation_text=f"required {rcrit.ratio_min:.2f}")
         fb.update_layout(title="Area ratio by wind heading", xaxis_title="Wind toward [°]", yaxis_title="Area ratio",
                          template="plotly_white", height=320)
         show(fb)
@@ -827,7 +835,7 @@ with tab_res:
                                         "line_pull_kN": sw["T"], "line_vertical_kN": sw["Fz"],
                                         "wind_force_kN": sw["Fw"]}))
         st.download_button("📥 Download all curves (CSV)", pd.concat(curves).to_csv(index=False).encode(),
-                           file_name="jacket_tow_curves.csv", mime="text/csv")
+                           file_name="jacket_tow_curves.csv", mime="text/csv", disabled=stale)
 
 # ----------------------------------------------------------------------------
 # Tab 5: sensitivity - number of tanks attached, tow connection
@@ -1144,8 +1152,10 @@ with tab_rep:
     if res is None:
         st.info("Run the analysis first.")
     else:
-        if st.session_state.res_hash != cur_hash:
-            st.warning("The report will use the inputs from the last run, not the current edits.")
+        _stale_rep = st.session_state.res_hash != cur_hash
+        if _stale_rep:
+            st.error("The result is superseded: the inputs or criteria changed since the last run. Press Run analysis "
+                     "before generating a report.")
         r1, r2, r3 = st.columns(3)
         prepared = r1.text_input("Prepared by", value=st.session_state.engineer, key="rep_prepared")
         checked = r2.text_input("Checked by", value="", key="rep_checked")
@@ -1172,7 +1182,7 @@ with tab_rep:
             pass
         pdf = build_pdf(st.session_state.res_snap, res, meta_, prepared, checked, rev)
         st.download_button("📄 Download draft report (A4 PDF)", data=pdf, file_name="Jacket_tow_stability_draft.pdf",
-                           mime="application/pdf")
+                           mime="application/pdf", disabled=_stale_rep)
         with st.expander("Assumptions and limitations"):
             for t in ASSUMPTIONS:
                 st.markdown(f"- {t}")
