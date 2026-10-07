@@ -36,7 +36,7 @@ def test_budget_and_environment_render(tmp_path):
     labels = {m.label: m.value for m in at.metric}
     assert labels["Weight (factored)"] == "1000.0 t"
     assert labels["Buoyancy capacity"] == "500.0 t"
-    assert labels["Tank volume needed in total"].startswith("585")        # 600 t / 1.025 = 585 m3
+    assert labels["Tank volume: additional needed"].startswith("585")        # 600 t / 1.025 = 585 m3
     assert any("Hs limit" in m.label for m in at.metric)
     assert any("No member geometry" in i.value for i in at.info)
 

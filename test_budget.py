@@ -20,7 +20,7 @@ def test_required_tank_volume_fixed_steel():
     b = bd.budget(1000.0, src, {"legs": 1.0}, reserve_min_pct=10.0)
     assert b["required_t"] == pytest.approx(1100.0)
     assert b["capacity_t"] == pytest.approx(500.0)
-    assert b["tank_volume_needed_m3"] == pytest.approx(600.0 / RHO)
+    assert b["tank_volume_required_total_m3"] == pytest.approx(600.0 / RHO)
     assert b["shortfall_t"] == pytest.approx(600.0) and not b["meets_reserve"]
 
 
@@ -29,7 +29,7 @@ def test_required_tank_volume_with_steel_per_m3():
     src = [dict(name="legs", group="leg", volume_m3=500.0 / RHO)]
     b = bd.budget(1000.0, src, {"legs": 1.0}, reserve_min_pct=10.0, tank_steel_in_weight_t=100.0,
                   tank_steel_t_per_m3=0.2)
-    v = b["tank_volume_needed_m3"]
+    v = b["tank_volume_required_total_m3"]
     assert v == pytest.approx(490.0 / 0.805, rel=1e-9)
     # closing the loop: with that tank volume the reserve is exactly 10 %
     w = 900.0 + 0.2 * v
@@ -40,7 +40,7 @@ def test_infeasible_when_steel_too_heavy():
     src = [dict(name="legs", group="leg", volume_m3=100.0)]
     b = bd.budget(1000.0, src, {"legs": 1.0}, reserve_min_pct=10.0, tank_steel_in_weight_t=50.0,
                   tank_steel_t_per_m3=1.0)          # 1.1 t per m3 of steel > 1.025 t per m3 of water
-    assert b["tank_volume_needed_m3"] is None and not b["feasible"]
+    assert b["tank_volume_required_total_m3"] is None and not b["feasible"]
 
 
 def test_shares_and_groups():
@@ -72,3 +72,23 @@ def test_loss_cases_remove_one_source_at_a_time():
     assert ra["capacity_t"] == pytest.approx(300 * RHO) and ra["meets"] is False
     rb = rows[1]                                       # lose b: 400 * 1.025 = 410 t < 630 t
     assert rb["capacity_t"] == pytest.approx(400 * RHO)
+
+
+def test_additional_is_total_minus_existing_for_volume_and_steel():
+    # existing tank 200 m3 (listed, sealed), legs 500 t, W = 1000 t incl. 40 t tank steel, k = 0.2, reserve 10 %
+    src = [dict(name="legs", group="leg", volume_m3=500.0 / RHO), dict(name="tank", group="tank", volume_m3=200.0)]
+    b = bd.budget(1000.0, src, {"legs": 1.0, "tank": 1.0}, reserve_min_pct=10.0, tank_steel_in_weight_t=40.0,
+                  tank_steel_t_per_m3=0.2)
+    total = b["tank_volume_required_total_m3"]
+    assert total == pytest.approx((1.1 * 960.0 - 500.0) / (RHO - 1.1 * 0.2))
+    assert b["tank_volume_existing_m3"] == pytest.approx(200.0)
+    assert b["tank_volume_additional_m3"] == pytest.approx(total - 200.0)
+    assert b["tank_steel_existing_t"] == 40.0
+    assert b["tank_steel_required_total_t"] == pytest.approx(0.2 * total)
+    assert b["tank_steel_additional_t"] == pytest.approx(0.2 * total - 40.0)
+
+
+def test_additional_volume_is_zero_when_existing_tanks_are_enough():
+    src = [dict(name="tank", group="tank", volume_m3=2000.0)]
+    b = bd.budget(1000.0, src, {"tank": 1.0}, reserve_min_pct=10.0)
+    assert b["tank_volume_additional_m3"] == 0.0

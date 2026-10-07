@@ -107,9 +107,13 @@ def _budget_section(raw: dict, key: str) -> None:
     m[1].metric("Buoyancy capacity", f"{res['capacity_t']:.1f} t")
     m[2].metric("Reserve", f"{res['reserve_pct']:.1f} %", delta=f"{res['reserve_pct'] - r_int:+.1f} vs {r_int:.0f} % required",
                 delta_color="normal")
-    tv = res["tank_volume_needed_m3"]
-    m[3].metric("Tank volume needed in total", "infeasible" if tv is None else f"{tv:.0f} m³",
-                help=f"Listed tank volume: {res['tank_volume_listed_m3']:.0f} m³")
+    tv, ta = res["tank_volume_required_total_m3"], res["tank_volume_additional_m3"]
+    m[3].metric("Tank volume: additional needed", "infeasible" if ta is None else f"{ta:.0f} m³",
+                help=("Total tank volume required "
+                      + ("n/a" if tv is None else f"{tv:.0f} m³") + f", of which {res['tank_volume_existing_m3']:.0f} m³ is already listed. "
+                      "Tank steel: " + ("n/a" if res["tank_steel_required_total_t"] is None else
+                                        f"{res['tank_steel_required_total_t']:.0f} t in total, {res['tank_steel_additional_t']:.0f} t more than "
+                                        f"the {res['tank_steel_existing_t']:.0f} t already in the weight.")))
     if res["meets_reserve"]:
         st.success(f"Meets {r_int:.0f} % reserve: capacity {res['capacity_t']:.0f} t ≥ required {res['required_t']:.0f} t.")
     else:

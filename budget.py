@@ -90,9 +90,13 @@ def budget(weight_t: float, sources: Sequence[dict], share: dict, *, reserve_min
         other_capacity_t=other_t, tank_capacity_t=tank_t, by_group_t=by_group,
         reserve_pct=100.0 * (capacity_t - weight_t) / weight_t,
         shortfall_t=max(0.0, required_t - capacity_t), meets_reserve=bool(capacity_t >= required_t - 1e-9),
-        tank_volume_needed_m3=v_total, tank_volume_listed_m3=tank_t / rho_w,
+        tank_volume_required_total_m3=v_total,            # all tank volume needed, existing plus new
+        tank_volume_existing_m3=tank_t / rho_w,           # sealed tank volume already listed
+        tank_volume_additional_m3=(None if v_total is None else max(0.0, v_total - tank_t / rho_w)),
         feasible=v_total is not None,
-        tank_steel_needed_t=(None if v_total is None else v_total * tank_steel_t_per_m3))
+        tank_steel_existing_t=tank_steel_in_weight_t,     # tank steel already in the weight
+        tank_steel_required_total_t=(None if v_total is None else v_total * tank_steel_t_per_m3),
+        tank_steel_additional_t=(None if v_total is None else max(0.0, v_total * tank_steel_t_per_m3 - tank_steel_in_weight_t)))
 
 
 def loss_cases(weight_t: float, sources: Sequence[dict], share: dict, *, reserve_min_pct: float = 5.0,
