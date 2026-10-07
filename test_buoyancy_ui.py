@@ -202,3 +202,16 @@ def test_synthetic_modules_are_flagged_after_hand_over(tmp_path):
     assert not at.exception
     assert at.session_state["data_flags"] == ["SYNTHETIC placeholder: Top tank (synthetic)"]
     assert any("SYNTHETIC placeholder" in w.value for w in at.sidebar.warning)
+
+
+def test_sidebar_says_when_tabs_1_to_6_still_hold_the_demo_jacket(tmp_path):
+    case = _budget_case()
+    case["structure"] = {"elements": [dict(name="L", x1=0, y1=0, z1=0, x2=0, y2=0, z2=50, d_out=1.0)],
+                         "weights": [dict(item="w", mass_t=10.0, x=0, y=0, z=20.0)]}
+    p = tmp_path / "d.case.json"
+    p.write_text(json.dumps(case))
+    at = _run(p)
+    at.run()                                   # second pass so the sidebar sees the case loaded in tab 7
+    assert any("still hold the demo jacket" in i.value for i in at.sidebar.info)
+    [b for b in at.button if b.key and b.key.startswith("bu_send_")][0].click().run()
+    assert not any("still hold the demo jacket" in i.value for i in at.sidebar.info)

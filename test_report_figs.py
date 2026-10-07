@@ -50,3 +50,10 @@ def test_report_builds_with_figures_and_attitudes(monkeypatch):
     assert len(seen["meta"]["attitudes"]) == 2                    # floating level + governing equilibrium
     assert all({"rot", "zw", "G", "B", "title"} <= set(a) for a in seen["meta"]["attitudes"])
     assert seen["size"] > 20_000
+
+
+def test_demo_jacket_is_still_recognised_with_the_tank_column():
+    from streamlit.testing.v1 import AppTest
+    at = AppTest.from_file("app.py", default_timeout=120)
+    at.run()
+    assert any("SYNTHETIC illustrative jacket" in w.value for w in at.sidebar.warning)

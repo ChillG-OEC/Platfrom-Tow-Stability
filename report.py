@@ -85,7 +85,8 @@ def build_pdf(snap: dict, res: dict, meta: dict, prepared: str, checked: str, re
     st_.append(Paragraph("JACKET WET-TOW STABILITY - SCREENING CALCULATION", h1))
     st_.append(Paragraph("DRAFT - NOT INDEPENDENTLY CHECKED - NOT FOR CONSTRUCTION OR CERTIFICATION USE", flag))
     import json as _json
-    if _json.dumps(snap["elements"], sort_keys=True, default=str) == _json.dumps(js.synthetic_inputs()["elements"], sort_keys=True, default=str):
+    _sig = lambda rows: _json.dumps([{k: v for k, v in x.items() if k != "tank"} for x in rows], sort_keys=True, default=str)
+    if _sig(snap["elements"]) == _sig(js.synthetic_inputs()["elements"]):
         st_.append(Paragraph("SYNTHETIC ILLUSTRATIVE CASE - geometry, weights and CoG are OEC assumptions, not project data", flag))
     for _fl in snap.get("flags", []):
         st_.append(Paragraph(_fl, flag))

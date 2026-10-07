@@ -444,11 +444,19 @@ except Exception as _exc:
     warnings = list(warnings) + [f"Extra model checks could not run: {_exc}"]
 
 st.sidebar.header("Run")
-_sj = json.dumps(snap["elements"], sort_keys=True, default=str)
-is_example = any(_sj == json.dumps(f()["elements"], sort_keys=True, default=str)
-                 for f in (js.example_inputs, js.synthetic_inputs))
+def _sig(rows) -> str:
+    """Element rows as comparable text; the tank flag is ignored (older example rows do not carry it)."""
+    return json.dumps([{k: v for k, v in r.items() if k != "tank"} for r in rows], sort_keys=True, default=str)
+
+
+_sj = _sig(snap["elements"])
+is_example = any(_sj == _sig(f()["elements"]) for f in (js.example_inputs, js.synthetic_inputs))
 if is_example:
     st.sidebar.warning("Tables hold the SYNTHETIC illustrative jacket - not project data.")
+_cr = st.session_state.get("case_raw")
+if is_example and _cr and (_cr.get("structure") or {}).get("elements"):
+    st.sidebar.info("A case file is loaded in tab 7, but these tabs still hold the demo jacket (CoG at 0, 0). "
+                    "Press 'Use in tabs 1-6' at the bottom of tab 7 to analyse the case-file platform.")
 for _f in st.session_state.get("data_flags", []):
     st.sidebar.warning(_f)
 for e in errors:
