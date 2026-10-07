@@ -140,6 +140,25 @@ def _environment_section(raw: dict) -> None:
         st.dataframe(pd.DataFrame(e["monthly"]), hide_index=True)
     if e.get("tide"):
         st.dataframe(pd.DataFrame([e["tide"]]), hide_index=True)
+    cur = e.get("current") or {}
+    if cur.get("presets"):
+        st.markdown("**Current for the tow-load analysis**")
+        pre = cur["presets"]
+        names = [p["name"] for p in pre]
+        dflt = names.index(cur["default"]) if cur.get("default") in names else 0
+        sel = st.selectbox("Current case", names, index=dflt, key="bu_cur_sel")
+        p = pre[names.index(sel)]
+        kn = float(p["speed_ms"]) / mo.KN
+        cc1, cc2 = st.columns([2, 1])
+        cc1.metric("Surface current", f"{p['speed_ms']:.2f} m/s = {kn:.2f} kn", help=p.get("source", ""))
+
+        def _use(kn=kn):
+            st.session_state["p_current_speed_kn"] = round(kn, 3)
+
+        cc2.button("Use in tow-load analysis (tab 2)", on_click=_use, key="bu_cur_use",
+                   help="Sets the current speed in tab 2. Direction relative to the tow is set there (180° = head current).")
+        st.caption(cur.get("basis", "") + " Drag goes with the square of the speed through the water, so a head current "
+                   "of 0.55 m/s on a 2.5 kn tow roughly doubles the line pull; a following current of the same size cuts it to a third.")
     rows = e.get("monthly") or []
     if rows and all(k in rows[0] for k in ("Hs P10 [m]", "Wind P1 [m/s]")):
         st.markdown("**Operability against the limits** (share of time below, from the percentile table)")

@@ -118,6 +118,10 @@ class Params:
     cd_water: float = 1.0         # drag coefficient on submerged members
     shielding: float = 1.0        # multiplier on projected areas (1 = none)
     tow_speed_kn: float = 2.5
+    current_speed_kn: float = 0.0   # horizontal water current (uniform with depth)
+    current_dir_deg: float = 0.0    # direction the current flows TOWARD, from the tow direction, counter-clockwise seen from above
+                                    # (0 = flows with the tow = following current, 180 = head current, 90 = from the starboard side to port)
+    tow_speed_ref: str = "ground"   # 'ground' (tow speed is over the seabed) | 'water' (through the water: current has no effect)
     tow_point: tuple = (0.0, 0.0, 0.0)
     tow_heading_deg: float = 0.0  # tow direction relative to body +x (upright)
     tow_mode: str = "auto"        # 'auto' (calm-water drag x factor) | 'manual'
@@ -477,7 +481,7 @@ class JacketModel:
             t_s = mean / nm if nm > 1e-9 else hd[ti[0]]
         else:
             t_s = hd[0]
-        out = dict(Fw=0.0, T=0.0, Dw=0.0, Fz=0.0, M_H=0.0, M_P=0.0, z_lr=float("nan"))
+        out = dict(Fw=0.0, T=0.0, Dw=0.0, Dc=0.0, Fz=0.0, M_H=0.0, M_P=0.0, z_lr=float("nan"))
         if sl.n:
             h = sl.c @ u
             sa = sl.a @ u
@@ -495,13 +499,29 @@ class JacketModel:
             f_k = q * p.wind_cs * p.shielding * dia * sl.t * sin_w * (1.0 - f_sub) / 1000.0
             fw = float(f_k.sum())
             u_t = p.tow_speed_kn * KN_TO_MS
-            dw = float((0.5 * p.rho_w * 1000.0 * u_t**2 * p.cd_water * p.shielding
-                        * dia * sl.t * sin_t * f_sub).sum()) / 1000.0
+            # water velocity relative to the jacket (world horizontal): current minus the jacket's own velocity
+            z_w = rot @ u
+            n_l = np.cross(z_w, t_s)
+            c_ms = p.current_speed_kn * KN_TO_MS
+            ang = math.radians(p.current_dir_deg)
+            c_vec = c_ms * (math.cos(ang) * t_s + math.sin(ang) * n_l)
+            v_r = -u_t * t_s if p.tow_speed_ref == "water" else c_vec - u_t * t_s
+            vr_mag = float(np.linalg.norm(v_r))
+            if vr_mag > 1e-9:
+                vr_hat = v_r / vr_mag
+                sin_v = np.linalg.norm(np.cross(sl.a, rot.T @ vr_hat), axis=1)
+                d_mag = (0.5 * p.rho_w * 1000.0 * vr_mag**2 * p.cd_water * p.shielding
+                         * dia * sl.t * sin_v * f_sub).sum() / 1000.0
+                d_vec = float(d_mag) * vr_hat
+            else:
+                d_vec = np.zeros(3)
+            dw = max(0.0, float(-d_vec @ t_s))                  # drag the tow line must carry along the track
+            dc = float(-d_vec @ n_l)                            # side force the tow line must also carry
         else:
             h = np.zeros(0)
             f_k = np.zeros(0)
             f_sub = np.zeros(0)
-            fw = dw = 0.0
+            fw = dw = dc = 0.0
 
         # line tensions: fixed ones as given; tow legs share the drag-based pull
         tens = self.line_tension.copy()
@@ -511,6 +531,12 @@ class JacketModel:
             tens[ti] = (t_total / den) * sh if den > 1e-9 else 0.0
         fh_vec = (tens * self.line_cos)[:, None] * hd           # horizontal part of each line force
         fz = tens * self.line_sin                               # vertical part [kN]
+        pts = self.line_pts
+        if len(ti) and sl.n and abs(dc) > 1e-12:
+            # side drag from the current, carried at the mean tow-line attachment (extra horizontal force)
+            fh_vec = np.vstack([fh_vec, (p.tow_factor * dc) * n_l[None, :]])
+            fz = np.append(fz, 0.0)
+            pts = np.vstack([pts, (sh[:, None] * self.line_pts[ti]).sum(axis=0) / sh.sum()])
         f_vec = fw * w_s + fh_vec.sum(axis=0)
 
         # reaction level: area-weighted centroid of submerged lateral area
@@ -524,15 +550,15 @@ class JacketModel:
             if om.sum() > 1e-9:
                 z_lr = float((om * h).sum() / om.sum())
 
-        h_i = self.line_pts @ u
+        h_i = pts @ u
         t_p, t_h = fh_vec @ p_ax, fh_vec @ h_ax
         m_h = float((f_k * (h - z_lr)).sum()) - float((t_p * (h_i - z_lr)).sum())
         m_p = float((t_h * (h_i - z_lr)).sum())
         if self.has_vertical and b is not None:
-            arm = (self.line_pts - b) @ rot.T                    # R (p_i - B) for each line
+            arm = (pts - b) @ rot.T                              # R (p_i - B) for each line
             m_h += float((fz * (arm @ p_ax)).sum())
             m_p -= float((fz * (arm @ h_ax)).sum())
-        out.update(Fw=fw, T=float(np.linalg.norm(fh_vec.sum(axis=0))), Dw=dw, Fz=float(fz.sum()),
+        out.update(Fw=fw, T=float(np.linalg.norm(fh_vec.sum(axis=0))), Dw=dw, Dc=dc, Fz=float(fz.sum()),
                    M_H=m_h, M_P=m_p, z_lr=z_lr)
         return out
 
@@ -559,7 +585,7 @@ class JacketModel:
         d_h, d_p = float(d @ h_ax), float(d @ p_ax)
         st = dict(zw=zw, d_H=d_h, d_P=d_p, draft=zw - h_low,
                   gz=-d_p - self.p.fsc_m * math.sin(phi),
-                  Fw=0.0, T=0.0, Dw=0.0, Fz=0.0, M_H=0.0, M_P=0.0, z_lr=float("nan"),
+                  Fw=0.0, T=0.0, Dw=0.0, Dc=0.0, Fz=0.0, M_H=0.0, M_P=0.0, z_lr=float("nan"),
                   h_open=float("nan"))
         if loads:
             st.update(ld)
@@ -1052,6 +1078,10 @@ def validate_inputs(elements: Sequence[Element], weights: Sequence[WeightItem],
                           f"vs {w_tot:,.0f} t weight.")
         elif buoy.vol_total * params.rho_w < 1.15 * w_tot:
             warnings.append("Reserve buoyancy is under 15%.")
+    if params.current_speed_kn < 0:
+        errors.append("Current speed cannot be negative.")
+    if params.tow_speed_ref not in ("ground", "water"):
+        errors.append("Tow speed reference must be 'ground' or 'water'.")
     if not any(e.exposed for e in elements):
         warnings.append("No exposed members: wind force and drag will be zero.")
     if params.lines:

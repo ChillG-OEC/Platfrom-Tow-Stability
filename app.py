@@ -47,7 +47,7 @@ DEFAULTS = {
     "p_rho_w": 1.025, "p_rho_a": 1.225,
     "p_wind_speed_kn": 40.0, "p_wind_cs": 1.0, "p_wind_alpha": 0.0, "p_wind_zref": 10.0,
     "p_shielding": 1.0,
-    "p_tow_speed_kn": 2.5,
+    "p_tow_speed_kn": 2.5, "p_current_speed_kn": 0.0, "p_current_dir_deg": 180.0, "p_tow_speed_ref": "ground",
     "p_tow_x": float(EX["tow_point"][0]), "p_tow_y": float(EX["tow_point"][1]),
     "p_tow_z": float(EX["tow_point"][2]),
     "p_tow_heading_deg": float(EX["tow_heading_deg"]), "p_tow_elev_deg": 0.0, "p_tow_share": 1.0, "p_tow_mode": "auto", "p_tow_manual_kn": 0.0,
@@ -165,6 +165,8 @@ def parts_from_snapshot(snap: dict):
         rho_w=w["p_rho_w"], rho_a=w["p_rho_a"], wind_speed_kn=w["p_wind_speed_kn"],
         wind_cs=w["p_wind_cs"], wind_alpha=w["p_wind_alpha"], wind_zref=w["p_wind_zref"],
         cd_water=w["p_cd_water"], shielding=w["p_shielding"], tow_speed_kn=w["p_tow_speed_kn"],
+        current_speed_kn=w.get("p_current_speed_kn", 0.0), current_dir_deg=w.get("p_current_dir_deg", 180.0),
+        tow_speed_ref=w.get("p_tow_speed_ref", "ground"),
         tow_point=(w["p_tow_x"], w["p_tow_y"], w["p_tow_z"]), tow_heading_deg=w["p_tow_heading_deg"],
         tow_mode=w["p_tow_mode"], tow_manual_kn=w["p_tow_manual_kn"], tow_factor=w["p_tow_factor"],
         fsc_m=snap["fsc_m"], lr_mode=w["p_lr_mode"], slice_m=w["p_slice_m"],
@@ -314,7 +316,15 @@ with tab_env:
             help="Sum of free-surface moments of slack tanks. Applied as FSM/W·sinφ off the righting arm.")
     with b:
         st.subheader("Tow")
-        num("Tow speed through water [kn]", "p_tow_speed_kn", min_value=0.0, step=0.1)
+        num("Tow speed [kn]", "p_tow_speed_kn", min_value=0.0, step=0.1)
+        st.selectbox("Tow speed is measured", ["ground", "water"], key="p_tow_speed_ref",
+                     format_func=lambda x: "over the seabed (current adds to the drag)" if x == "ground"
+                     else "through the water (current has no effect)",
+                     help="Confirm with the tow master. Bollard-pull curves are normally through the water; a schedule is over ground.")
+        num("Current speed [kn]", "p_current_speed_kn", min_value=0.0, step=0.1,
+            help="Horizontal, uniform with depth (conservative for a deep jacket). Tab 7 can fill this from the case file.")
+        num("Current flows toward [° from the tow direction]", "p_current_dir_deg", min_value=0.0, max_value=360.0, step=15.0,
+            help="0 = with the tow (following), 180 = against the tow (head), 90 = across, to port of the tow direction.")
         st.selectbox("Tow-line pull", ["auto", "manual"], key="p_tow_mode",
                      help="auto = calm-water drag of submerged members × factor; manual = a pull you specify.")
         num("Margin on calm-water drag (auto)", "p_tow_factor", min_value=0.5, step=0.1)

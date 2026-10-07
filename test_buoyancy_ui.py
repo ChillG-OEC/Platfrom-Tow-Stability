@@ -54,3 +54,17 @@ def test_bad_file_reports_error(tmp_path):
     at = _run(p)
     assert not at.exception
     assert any("Could not read" in e.value for e in at.error)
+
+
+def test_current_preset_fills_the_tow_load_input(tmp_path):
+    case = _budget_case()
+    case["environment"]["current"] = {"presets": [{"name": "P1", "speed_ms": 0.514444, "source": "test"},
+                                                  {"name": "1-yr", "speed_ms": 1.028888, "source": "test"}], "default": "P1"}
+    f = tmp_path / "c.case.json"
+    f.write_text(json.dumps(case))
+    at = _run(f)
+    assert not at.exception
+    at.selectbox(key="bu_cur_sel").select("1-yr").run()
+    at.button(key="bu_cur_use").click().run()
+    assert not at.exception
+    assert abs(at.session_state["p_current_speed_kn"] - 2.0) < 1e-3
