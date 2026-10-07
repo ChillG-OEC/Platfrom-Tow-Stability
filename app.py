@@ -764,8 +764,11 @@ with tab_res:
                       "Above water [m]": f"{t['emerged_m']:.2f}", "Buoyancy [t]": f"{t['buoyancy_t']:.0f}"} for t in F["tanks"]]
             with st.expander("Tank table"):
                 st.dataframe(pd.DataFrame(trows), hide_index=True)
-            if abs(F["trim_deg"]) > 1.0:
-                st.caption(f"Level trim is {F['trim_deg']:.1f}°; clearance assumes a level waterline, so check it with a full analysis.")
+            if F.get("clearance_member"):
+                _p = F["clearance_point"]
+                st.caption(f"Clearance is set by member '{F['clearance_member']}' (lowest point near x {_p[0]:.1f}, "
+                           f"y {_p[1]:.1f}, z {_p[2]:.1f} m) at the trimmed attitude, trim {F['trim_deg']:.2f}°."
+                           + (f" Shortest tank above water: {F['tank_emergence_member']}." if F.get("tank_emergence_member") else ""))
 
         rows = []
         for h in res["heads"]:

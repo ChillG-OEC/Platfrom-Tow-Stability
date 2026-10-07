@@ -872,37 +872,78 @@ def criteria_from_widgets(w: dict) -> "Criteria":
 # ----------------------------------------------------------------------------
 # Installation / set-down float check: seabed clearance, tank emergence, ballast headroom
 # ----------------------------------------------------------------------------
-def float_check(model: "JacketModel", crit: Criteria) -> dict:
-    """Level, no-wind, no-tow floating condition checked against the water depth.
+def _lowest_point(elements, rot: np.ndarray) -> tuple:
+    """Lowest point of the structure in the space frame for body->space rotation rot, with the member that sets it.
+    Returns (z_low, member name, body-frame point).  Each member is a cylinder: its lowest surface point is the lower
+    axis end less the radius times the horizontal share of the axis."""
+    best = (np.inf, "", (0.0, 0.0, 0.0))
+    for e in elements:
+        p1, p2 = np.asarray(e.p1, float), np.asarray(e.p2, float)
+        q1, q2 = rot @ p1, rot @ p2
+        ax = q2 - q1
+        n = float(np.linalg.norm(ax))
+        ext = 0.5 * e.d_out * (math.sqrt(max(1.0 - (ax[2] / n) ** 2, 0.0)) if n > 1e-12 else 1.0)
+        for q, p in ((q1, p1), (q2, p2)):
+            if q[2] - ext < best[0]:
+                best = (float(q[2] - ext), e.name, tuple(float(v) for v in p))
+    return best
 
-    Reports the waterline, the clearance from the lowest point of the structure to
-    the seabed, how much of each buoyancy tank is out of the water, the freeboard,
-    and the ballast (+) or weight to shed (-) before a limit is reached.  The
-    structure is taken as level (trim is reported; the clearance uses the level
-    waterline, so a trim above a degree or so needs a full check)."""
+
+def _axis_above(q1: np.ndarray, q2: np.ndarray, zw: float) -> float:
+    """Length of the segment q1-q2 that is above the waterline z = zw."""
+    length = float(np.linalg.norm(q2 - q1))
+    z1, z2 = float(q1[2]), float(q2[2])
+    if length <= 1e-12:
+        return 0.0 if z1 <= zw else 0.0
+    lo, hi = min(z1, z2), max(z1, z2)
+    if hi <= zw:
+        return 0.0
+    if lo >= zw:
+        return length
+    return length * (hi - zw) / (hi - lo)
+
+
+def float_check(model: "JacketModel", crit: Criteria) -> dict:
+    """Free-to-trim, no-wind, no-tow floating condition checked against the water depth.
+
+    Clearance and tank emergence are evaluated on the actual trimmed attitude: every member is rotated into the space
+    frame, the lowest surface point of the structure sets the clearance (and names the controlling member), and each
+    tank's emerged length is the part of its axis above the waterline.  Also reports the freeboard, ballast headroom
+    (+ can be added, - must be shed) and the stability."""
     h = model.hydrostatics()
     p = model.p
     rho = p.rho_w
-    zw = h["zw"]
-    z_base, z_top = h["bbox_lo"][2], h["bbox_hi"][2]
-    draft_total = zw - z_base
-    tank_names = {e.name for e in model.elements if e.buoyant and e.tank}
+    st = model.attitude_state(0.0, 0.0, h["trim_deg"])
+    if st is None:
+        raise ValueError("Insufficient buoyancy to float the structure.")
+    rot, zw = st["rot"], float(st["zw"])
+    z_low, low_member, low_pt = _lowest_point(model.elements, rot)
+    z_top = max(float((rot @ np.asarray(pt, float))[2]) for e in model.elements for pt in (e.p1, e.p2))
+    draft_total = zw - z_low
+    tank_els = [e for e in model.elements if e.buoyant and e.tank]
+    tank_names = {e.name for e in tank_els}
     tanks = [r for r in h["members"] if r["status"] == "buoyant" and r["name"] in tank_names]
+    by_name = {e.name: e for e in tank_els}
+    tank_top = {}
     for r in tanks:
-        r["emerged_m"] = r["length_m"] * (1.0 - r["sub_pct"] / 100.0)
+        e = by_name[r["name"]]
+        q1, q2 = rot @ np.asarray(e.p1, float), rot @ np.asarray(e.p2, float)
+        r["emerged_m"] = _axis_above(q1, q2, zw)
+        r["controlling_end"] = "p1" if q1[2] > q2[2] else "p2"
+        tank_top[e.name] = float(max(q1[2], q2[2]))
     emerged_min = min((r["emerged_m"] for r in tanks), default=float("nan"))
-    tank_top = {e.name: max(e.p1[2], e.p2[2]) for e in model.elements if e.buoyant and e.tank}
+    emerged_ctrl = min(tanks, key=lambda r: r["emerged_m"])["name"] if tanks else None
     depth = p.water_depth_m + p.tide_m if p.water_depth_m > 0 else None
     clearance = None if depth is None else depth - draft_total
     opens = [o["above_water_m"] for o in h["openings"]]
     u0 = np.array([0.0, 0.0, 1.0])
 
-    def mass_at(zw_x: float) -> float:
+    def mass_at(zw_x: float) -> float:      # level-waterline approximation for the ballast headroom only
         return rho * cut(model.ea, u0, zw_x)[0]
 
     limits = {}
     if depth is not None and crit.clear_min_m > 0.0:
-        limits["clearance"] = z_base + depth - crit.clear_min_m
+        limits["clearance"] = z_low + depth - crit.clear_min_m
     if crit.emerged_min_m > 0.0 and tank_top:
         limits["tank emergence"] = min(tank_top.values()) - crit.emerged_min_m
     gov, headroom = None, None
@@ -912,7 +953,8 @@ def float_check(model: "JacketModel", crit: Criteria) -> dict:
     gm = min(h["gm_x"], h["gm_y"])
     tilt = model.free_tilt()
     out = dict(
-        zw=zw, z_base=z_base, z_top=z_top, draft_total=draft_total, trim_deg=h["trim_deg"],
+        zw=zw, z_base=z_low, z_top=z_top, draft_total=draft_total, trim_deg=h["trim_deg"],
+        clearance_member=low_member, clearance_point=low_pt, tank_emergence_member=emerged_ctrl,
         water_depth=p.water_depth_m, tide=p.tide_m, depth_total=depth, clearance=clearance,
         emerged_min=emerged_min, tanks=tanks, freeboard_top=z_top - zw,
         opening_min=(min(opens) if opens else None), gm_min=gm, gm_x=h["gm_x"], gm_y=h["gm_y"],

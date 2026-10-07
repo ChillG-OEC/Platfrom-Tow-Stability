@@ -441,3 +441,37 @@ def test_criteria_checks_need_their_switch_and_old_files_still_work():
     assert off.clear_min_m == 0.0 and off.emerged_min_m == 3.0 and off.df_min_deg == 0.0
     old = js.criteria_from_widgets(dict(base, c_clear_min_m=5.0, c_emerged_min_m=0.0, c_df_min_deg=0.0))   # no switches saved
     assert old.clear_min_m == 5.0 and old.emerged_min_m == 0.0
+
+
+def _col(name, p1, p2, d=2.0, buoyant=True):
+    return js.Element(name, p1, p2, d, 0.0, buoyant, True, False, True)
+
+
+def test_lowest_point_follows_the_rotation_and_names_the_member():
+    els = [_col("long", (0, 0, 0), (0, 0, 40)), _col("short", (5, 0, 10), (5, 0, 20))]
+    z, name, pt = js._lowest_point(els, np.eye(3))
+    assert name == "long" and z == pytest.approx(0.0) and pt == (0.0, 0.0, 0.0)
+    # tip the jacket 10 deg about y: the long column's foot leaves the same height, the short one stays above
+    a = math.radians(10.0)
+    rot = np.array([[math.cos(a), 0, math.sin(a)], [0, 1, 0], [-math.sin(a), 0, math.cos(a)]])
+    z2, name2, _ = js._lowest_point(els, rot)
+    # surface point of the foot sits radius * sin(10 deg)/... below the axis end: lowest = axis z - 1 * sqrt(1-cos^2)
+    assert name2 == "long" and z2 == pytest.approx(-1.0 * math.sin(a), abs=1e-9)
+
+
+def test_axis_above_waterline_clips_a_tilted_member():
+    q1, q2 = np.array([0.0, 0.0, 0.0]), np.array([6.0, 0.0, 8.0])        # 10 m long
+    assert js._axis_above(q1, q2, 4.0) == pytest.approx(5.0)               # half of it above z = 4
+    assert js._axis_above(q1, q2, -1.0) == pytest.approx(10.0)
+    assert js._axis_above(q1, q2, 9.0) == 0.0
+
+
+def test_float_check_clearance_uses_the_lowest_member_and_depth():
+    els = [_col("col", (0, 0, 0), (0, 0, 40), d=4.0)]
+    wts = [js.WeightItem("w", 300.0, 0, 0, 10.0)]
+    p = js.Params(tow_point=(0, 0, 10), tow_heading_deg=0.0, water_depth_m=50.0, tide_m=1.0)
+    m = js.JacketModel(els, wts, [], p)
+    F = js.float_check(m, js.Criteria(gm_min=0.0, clear_min_m=5.0, emerged_min_m=3.0))
+    assert F["clearance_member"] == "col"
+    assert F["clearance"] == pytest.approx(51.0 - F["draft_total"])
+    assert F["tank_emergence_member"] == "col" and F["emerged_min"] == pytest.approx(40.0 - F["draft_total"], abs=0.05)
