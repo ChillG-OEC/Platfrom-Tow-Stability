@@ -147,6 +147,7 @@ def make_snapshot(weights_df, elems_df, open_df, lines_df=None) -> dict:
         openings=[r for r in records(open_df) if all(_num_ok(r.get(c)) for c in O_COLS[1:])],
         lines=line_rows(lines_df) if lines_df is not None else [],
         flags=[str(x) for x in ss.get("data_flags", [])],
+        placeholders={k: float(v) for k, v in ss.get("placeholders", {}).items()},
         fsc_m=(float(ss["p_fsm"]) / w_tot) if w_tot > 0 else 0.0,
     )
 
@@ -199,6 +200,7 @@ def apply_snapshot(data: dict) -> None:
     ln = pd.DataFrame(data.get("lines", []), columns=LINE_COLS)
     ss.t_lines = ln if len(ln) else empty_lines()
     ss["data_flags"] = [str(x) for x in data.get("flags", [])]
+    ss["placeholders"] = {str(k): float(v) for k, v in data.get("placeholders", {}).items()}
     ss.ver += 1
     ss.res = None
 
@@ -225,7 +227,11 @@ if _pend:
     _w["project"] = str(_pend["name"])[:120]
     apply_snapshot(dict(widgets=_w, weights=_pend["weights"], elements=_pend["elements"], openings=_pend["openings"],
                         lines=[], flags=_pend.get("flags", [])))
-    st.session_state["placeholders"] = dict(_pend.get("placeholders", {}))
+    _ph = dict(_pend.get("placeholders", {}))
+    # heading and wind are placeholders only while they still hold the app default
+    _ph.update({k: DEFAULTS[k] for k in ("p_tow_heading_deg", "p_wind_speed_kn")
+                if abs(float(st.session_state.get(k, DEFAULTS[k])) - float(DEFAULTS[k])) < 1e-9})
+    st.session_state["placeholders"] = _ph
     st.session_state["send_case_done"] = _pend["name"]
     st.session_state["p_fsm"] = 0.0
     st.session_state["a_scenario"] = "Damaged (flooded elements lose buoyancy)" if _pend.get("damaged") else "Intact"
@@ -467,8 +473,10 @@ _PH_LABEL = {"p_tow_x": "tow point", "p_tow_y": "tow point", "p_tow_z": "tow poi
 snap_project = str(snap["widgets"].get("project", "case"))
 with status_box:
     _ss = st.session_state
-    _unset = sorted({_PH_LABEL[k] for k, v in _ss.get("placeholders", {}).items()
-                     if k in _ss and abs(float(_ss[k]) - float(v)) < 1e-9})
+    _ph = _ss.get("placeholders", {})
+    _same = {k for k, v in _ph.items() if k in _ss and abs(float(_ss[k]) - float(v)) < 1e-9}
+    _unset = sorted(({"tow point"} if {"p_tow_x", "p_tow_z"} <= _same else set())
+                    | {_PH_LABEL[k] for k in _same if k in ("p_tow_heading_deg", "p_wind_speed_kn")})
     _syn = [f.replace("SYNTHETIC placeholder: ", "") for f in _ss.get("data_flags", [])]
     if is_example:
         st.warning("**Data in tabs 1-6:** the built-in demo jacket. Nothing here is project data.", icon="⚠️")

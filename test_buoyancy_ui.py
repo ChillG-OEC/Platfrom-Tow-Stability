@@ -234,13 +234,47 @@ def test_status_strip_demo_then_synthetic_after_send(tmp_path):
     assert "synthetic:" in txt and "Top tank (synthetic)" in txt and "tow point" in txt
 
 
-def test_window_figure_shades_pass_range():
+def test_window_figure_shades_each_pass_run_with_width():
     import pandas as pd
     import buoyancy_ui as ui
     from types import SimpleNamespace as NS
-    df = pd.DataFrame(dict(diameter_m=[2, 3, 4, 5], floats=[True] * 4, reserve_pct=[1, 5, 12, 20],
-                           gm_min_m=[1, 2, 3, 4], clearance_m=[1, 2, 3, 4],
-                           intact_passed=[False, False, True, True], all_passed=[False, False, False, True]))
-    f = ui._window_figure(df, 10, 5, NS(gm_min=1.0, clear_min_m=2.0))
-    rects = [s for s in f.layout.shapes if s.type == "rect"]
-    assert {(int(r.x0), int(r.x1)) for r in rects} == {(4, 5), (5, 5)}
+    df = pd.DataFrame(dict(diameter_m=[2, 3, 4, 5, 6], floats=[True] * 5, reserve_pct=[1, 5, 12, 20, 25],
+                           gm_min_m=[1, 2, 3, 4, 5], clearance_m=[1, 2, 3, 4, 5],
+                           intact_passed=[False, True, False, True, True], all_passed=[False] * 4 + [True]))
+    f = ui._window_figure(df, 10, 5, NS(gm_min=1.0, clear_min_m=0.0))
+    rects = {(float(r.x0), float(r.x1)) for r in f.layout.shapes if r.type == "rect"}
+    assert rects == {(2.5, 3.5), (4.5, 6.5), (5.5, 6.5)}          # the 4 m gap stays unshaded; single size has width
+    assert [a.text for a in f.layout.annotations if "pass" in (a.text or "")] == ["intact passes", "intact + all damage pass"]
+    hl = [s for s in f.layout.shapes if s.type == "line" and s.y0 == 0.0]
+    assert not hl                                                # clearance limit 0 draws no line
+
+
+def _sent(tmp_path, pre=None):
+    case = _budget_case()
+    case["structure"] = {"elements": [dict(name="L", x1=0, y1=0, z1=0, x2=0, y2=0, z2=50, d_out=1.0)],
+                         "weights": [dict(item="w", mass_t=10.0, x=0, y=0, z=20.0)]}
+    p = tmp_path / "p.case.json"
+    p.write_text(json.dumps(case))
+    at = _run(p)
+    at.run()
+    for k, v in (pre or {}).items():
+        at.session_state[k] = v
+    [b for b in at.button if b.key and b.key.startswith("bu_send_")][0].click().run()
+    return at
+
+
+def _strip(at):
+    return " ".join(w.value for w in at.warning)
+
+
+def test_placeholders_only_for_untouched_defaults(tmp_path):
+    at = _sent(tmp_path, pre={"p_wind_speed_kn": 55.0})
+    assert "wind speed" not in _strip(at) and "tow heading" in _strip(at) and "tow point" in _strip(at)
+    assert set(at.session_state["placeholders"]) == {"p_tow_x", "p_tow_z", "p_tow_heading_deg"}
+
+
+def test_tow_point_clears_when_x_is_set(tmp_path):
+    at = _sent(tmp_path)
+    at.session_state["p_tow_x"] = at.session_state["p_tow_x"] + 3.0
+    at.run()
+    assert "tow point" not in _strip(at)

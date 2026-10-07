@@ -352,9 +352,9 @@ def render_case_platform(raw: dict) -> None:
 
 def _queue_send(payload: dict) -> None:
     ss = st.session_state
-    ph = {k: payload["widgets"][k] for k in ("p_tow_x", "p_tow_y", "p_tow_z")}
-    ph.update({k: ss[k] for k in ("p_tow_heading_deg", "p_wind_speed_kn") if k in ss})
-    payload = dict(payload, placeholders=ph)          # values still to be set from the design basis
+    # tow point x and z are the placeholders (y is the centreline, where a real tow point usually is too)
+    ph = {k: payload["widgets"][k] for k in ("p_tow_x", "p_tow_z")}
+    payload = dict(payload, placeholders=ph)
     ss["send_case_pending"] = payload
 
 
@@ -392,23 +392,54 @@ def _send_section(case: dict, key: str) -> None:
         st.success("Loaded into tabs 1-6. Check tab 1 and tab 2, then run the analysis from the sidebar.")
 
 
+def _runs(x, mask):
+    """(start, end) of each run of consecutive True values of mask along x."""
+    out, start, prev = [], None, None
+    for xi, m in zip(x, mask):
+        if m and start is None:
+            start = xi
+        if m:
+            prev = xi
+        if not m and start is not None:
+            out.append((start, prev))
+            start = None
+    if start is not None:
+        out.append((start, prev))
+    return out
+
+
 def _window_figure(df, rm, rd, crit):
-    """Reserve, GM and clearance against tank diameter, with the passing range shaded."""
+    """Reserve, GM and seabed clearance against tank diameter, with each passing range shaded."""
+    import numpy as np
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
     f = go.Figure(make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.06,
-                                subplot_titles=("Reserve buoyancy [%]", "GM min [m]", "Deck clearance [m]")))
-    ok = df[df.floats]
+                                subplot_titles=("Reserve buoyancy [%]", "GM min [m]", "Seabed clearance [m]")))
+    df = df.sort_values("diameter_m")
+    ok = df[df.floats.astype(bool)]
     x = ok.diameter_m
-    for r, (col, lim) in enumerate((("reserve_pct", rm), ("gm_min_m", crit.gm_min), ("clearance_m", crit.clear_min_m)), 1):
-        f.add_scatter(x=x, y=ok[col], mode="lines+markers", row=r, col=1, showlegend=False, line=dict(color="#1f77b4"))
-        f.add_hline(y=lim, line=dict(color="red", dash="dash"), row=r, col=1)
+    panels = ((("reserve_pct", (rm, "intact")), ("reserve_pct", (rd, "damaged"))),
+              (("gm_min_m", (crit.gm_min, "limit")),), (("clearance_m", (crit.clear_min_m, "limit")),))
+    for r, lines in enumerate(panels, 1):
+        col = lines[0][0]
+        y = ok[col]
+        if y.isna().all():
+            continue
+        f.add_scatter(x=x, y=y, mode="lines+markers", row=r, col=1, showlegend=False, line=dict(color="#1f77b4"))
+        for _, (lim, nm) in lines:
+            if lim and lim > 0:
+                f.add_hline(y=lim, line=dict(color="red", dash="dash"), row=r, col=1,
+                            annotation_text=f"{nm} min" if r == 1 else None, annotation_position="right")
+    xs = np.sort(df.diameter_m.to_numpy(float))
+    pad = 0.5 * (np.diff(xs).min() if len(xs) > 1 else 0.1)
     for col, colour, name in (("intact_passed", "rgba(255,193,7,0.25)", "intact passes"),
                               ("all_passed", "rgba(46,160,67,0.30)", "intact + all damage pass")):
-        d = df[df[col]].diameter_m
-        if len(d):
-            f.add_vrect(x0=d.min(), x1=d.max(), fillcolor=colour, line_width=0, annotation_text=name,
-                        annotation_position="top left" if col == "intact_passed" else "bottom right")
+        for i, (a, z) in enumerate(_runs(df.diameter_m, df[col].astype(bool))):
+            f.add_vrect(x0=a - pad, x1=z + pad, fillcolor=colour, line_width=0, row="all", col=1)
+            if i == 0:
+                f.add_annotation(x=(a + z) / 2, y=1.0 if col == "intact_passed" else 0.0, yref="y domain", xref="x",
+                                 text=name, showarrow=False, yanchor="bottom" if col == "all_passed" else "top",
+                                 font=dict(size=11))
     f.update_xaxes(title_text="Tank diameter [m]", row=3, col=1)
     f.update_layout(height=620, margin=dict(l=10, r=10, t=40, b=10))
     return f

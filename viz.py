@@ -12,6 +12,7 @@ import math
 from typing import Optional, Sequence
 
 import numpy as np
+import plotly.colors
 import plotly.graph_objects as go
 
 import jacket_stability as js
@@ -122,9 +123,11 @@ def jacket_figure(elements: Sequence[js.Element], weights: Sequence[js.WeightIte
     by_d = color_by == "diameter"
     dia_col: dict[str, str] = {}
     if by_d:
-        ds = sorted({round(e.d_out * 1000.0) for e in elements}, reverse=True)
+        ds = sorted({round(e.d_out * 1000.0) for e in elements if not (e.buoyant and e.flooded)}, reverse=True)
+        n = len(ds)
         for i, dmm in enumerate(ds):
-            dia_col[f"Ø{dmm:.0f} mm"] = DIAMETER_PALETTE[i % len(DIAMETER_PALETTE)]
+            dia_col[f"Ø{dmm:.0f} mm"] = (DIAMETER_PALETTE[i] if n <= len(DIAMETER_PALETTE) else
+                                         plotly.colors.sample_colorscale("Turbo", [i / max(n - 1, 1)])[0])
     groups: dict[str, list] = {}
     for e in elements:
         p1, p2 = r_m @ np.asarray(e.p1, float), r_m @ np.asarray(e.p2, float)
