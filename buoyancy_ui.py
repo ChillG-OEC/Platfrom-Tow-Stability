@@ -219,6 +219,7 @@ def _structure_section(case: dict) -> None:
             xs += [r.x1, r.x2, None]; ys += [r.y1, r.y2, None]; zs += [r.z1, r.z2, None]
         fig.add_trace(go.Scatter3d(x=xs, y=ys, z=zs, mode="lines", name=grp, line=dict(color=colour[grp], width=4)))
     fig.update_layout(height=520, margin=dict(l=0, r=0, t=10, b=0), scene=dict(aspectmode="data"))
+    _weights_cog(case)
     legs = _leg_table(df)
     if legs is not None:
         for r in legs.itertuples():
@@ -230,6 +231,25 @@ def _structure_section(case: dict) -> None:
         st.dataframe(legs.rename(columns=dict(x="x [m]", y="y [m]", top_z="top z [m]", bottom_z="bottom z [m]",
                                               length_m="length [m]", pieces="segments", steel_t="steel [t]")).round(2),
                      hide_index=True)
+
+
+def _weights_cog(case: dict) -> None:
+    """Weight items of the structure with the combined centre of gravity (body z and EL on the project datum)."""
+    wts = list(case["structure"].weights)
+    if not wts:
+        return
+    dz = float(case.get("datum_offset_m", 0.0))
+    tot = sum(w.mass_t for w in wts)
+    g = [sum(w.mass_t * getattr(w, a) for w in wts) / tot for a in ("x", "y", "z")]
+    st.markdown("**Structure weights and centre of gravity**")
+    k = st.columns(4)
+    k[0].metric("Structure weight", f"{tot:,.2f} t")
+    k[1].metric("CoG x", f"{g[0]:.3f} m")
+    k[2].metric("CoG y", f"{g[1]:.3f} m")
+    k[3].metric("CoG z (EL)", f"{g[2] - dz:.2f} m", help=f"{g[2]:.2f} m above the base; EL = z - {dz:.1f} m")
+    st.dataframe(pd.DataFrame([dict(item=w.name, mass_t=w.mass_t, x=w.x, y=w.y, z_above_base=w.z, EL=w.z - dz)
+                               for w in wts]).round(3), hide_index=True)
+    st.caption("Tanks and other buoyancy modules carry their own weights, shown in section C with the floating results.")
 
 
 def _leg_table(df: pd.DataFrame):

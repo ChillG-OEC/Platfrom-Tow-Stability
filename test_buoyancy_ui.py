@@ -169,3 +169,19 @@ def test_send_platform_to_tabs_1_to_6(tmp_path):
     assert at.session_state["t_elems"]["buoyant"].tolist() == [True, True]      # sealed module => buoyant
     assert at.session_state["t_weights"]["mass_t"].sum() == 40.0
     assert at.session_state["project"] == "unit budget case"
+
+
+def test_structure_weights_and_cog_are_shown(tmp_path):
+    case = _budget_case()
+    case["datum"] = {"z_offset_m": 10.0}
+    case["structure"] = {
+        "elements": [dict(name="Leg x0 A can00", x1=0, y1=0, z1=-10, x2=0, y2=0, z2=40, d_out=1.0)],
+        "weights": [dict(item="a", mass_t=30.0, x=0, y=0, z=0.0), dict(item="b", mass_t=10.0, x=4, y=2, z=20.0)]}
+    p = tmp_path / "w.case.json"
+    p.write_text(json.dumps(case))
+    at = _run(p)
+    assert not at.exception
+    m = {x.label: x.value for x in at.metric}
+    assert m["Structure weight"] == "40.00 t"
+    assert m["CoG x"] == "1.000 m" and m["CoG y"] == "0.500 m"
+    assert m["CoG z (EL)"] == "5.00 m"           # body z 15 above base, datum offset 10 => EL 5
