@@ -239,3 +239,48 @@ def damage_cases(structure: Structure, modules: Sequence[BuoyancyModule], base_s
         r["damaged_module"] = m.name
         rows.append(r)
     return rows
+
+
+# ----------------------------------------------------------------------------
+# Tank sizing
+# ----------------------------------------------------------------------------
+def scale_tanks(modules: Sequence[BuoyancyModule], names: Sequence[str], factor: float) -> list:
+    """Copy of `modules` with the tank cylinders of the named modules scaled in diameter by `factor`
+    (length and position unchanged).  Their own steel weight is scaled with the volume, factor**2."""
+    out = []
+    for m in modules:
+        if m.name in names and m.elements:
+            els = tuple(replace(e, d_out=e.d_out * factor, d_in=e.d_in * factor) for e in m.elements)
+            wts = tuple(replace(w, mass_t=w.mass_t * factor ** 2) for w in m.weights)
+            m = replace(m, elements=els, weights=wts)
+        out.append(m)
+    return out
+
+
+def size_tanks(structure: Structure, modules: Sequence[BuoyancyModule], base_states: dict, params: js.Params,
+               crit: js.Criteria, names: Sequence[str], *, reserve_min_pct: float = 0.0,
+               damaged_reserve_min_pct: float = 0.0, f_min: float = 0.6, f_max: float = 2.0, steps: int = 29) -> dict:
+    """Scale the diameter of the named tank modules over a range and report the intact and one-module-damaged
+    results for each size.  Returns {"rows": [...], "f_intact": first factor that passes intact or None,
+    "f_all": first factor passing intact and every damage case or None}.  Tank steel weight scales with volume."""
+    names = list(names)
+    tanks = [m for m in modules if m.name in names and m.elements]
+    if not tanks or steps < 2 or f_max <= f_min:
+        raise ValueError("size_tanks needs at least one named module with its own tank elements and f_max > f_min")
+    d0 = [e.d_out for m in tanks for e in m.elements]
+    rows = []
+    for i in range(steps):
+        f = f_min + (f_max - f_min) * i / (steps - 1)
+        mods = scale_tanks(modules, names, f)
+        r = evaluate(structure, mods, base_states, params, crit, reserve_min_pct=reserve_min_pct)
+        dmg = damage_cases(structure, mods, base_states, params, crit, reserve_min_pct=damaged_reserve_min_pct)
+        n_ok = sum(1 for x in dmg if x.get("passed"))
+        vol = sum(math.pi / 4 * e.d_out ** 2 * math.dist(e.p1, e.p2) for m in mods if m.name in names for e in m.elements)
+        rows.append(dict(factor=f, diameter_m=max(d0) * f, tank_volume_m3=vol, floats=r["floats"],
+                         weight_t=r.get("weight_t"), reserve_pct=r.get("reserve_pct"), clearance_m=r.get("clearance_m"),
+                         gm_min_m=r.get("gm_min_m"), intact_passed=bool(r.get("passed")),
+                         damage_passed=n_ok, damage_total=len(dmg),
+                         all_passed=bool(r.get("passed")) and n_ok == len(dmg)))
+    f_i = next((x["factor"] for x in rows if x["intact_passed"]), None)
+    f_a = next((x["factor"] for x in rows if x["all_passed"]), None)
+    return dict(rows=rows, f_intact=f_i, f_all=f_a)

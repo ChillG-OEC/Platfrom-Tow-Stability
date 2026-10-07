@@ -211,3 +211,25 @@ def test_case_loader_reports_problems(tmp_path):
         case_io.load_case(p)
     with pytest.raises(case_io.CaseFileError, match="cannot read"):
         case_io.load_case(tmp_path / "missing.json")
+
+
+def test_size_tanks_finds_the_passing_size():
+    legs = [js.Element(f"L{i}", (x, y, 0), (x, y, 100), 1.0, 0.0, False) for i, (x, y) in enumerate([(0, 0), (6, 0), (0, 6), (6, 6)])]
+    s = bu.Structure(legs, [js.WeightItem("w", 150.0, 3, 3, 10.0)])
+
+    def tank(n, x):
+        return bu.BuoyancyModule(n, elements=(js.Element(n + "c", (x, 3, 10), (x, 3, 30), 2.0, 0.0, True),),
+                                 weights=(js.WeightItem(n + "s", 5.0, x, 3, 20.0),))
+    mods = [bu.BuoyancyModule("legs", members=tuple(f"L{i}" for i in range(4)), z_lo=0, z_hi=40), tank("T1", -3), tank("T2", 9)]
+    states = {m.name: "sealed" for m in mods}
+    out = bu.size_tanks(s, mods, states, js.Params(wind_speed_kn=0, tow_speed_kn=0), js.Criteria(), ["T1", "T2"],
+                        reserve_min_pct=10.0, f_min=0.5, f_max=2.5, steps=9)
+    rows = out["rows"]
+    assert len(rows) == 9 and rows[0]["diameter_m"] == pytest.approx(1.0) and rows[-1]["diameter_m"] == pytest.approx(5.0)
+    assert not rows[0]["intact_passed"]                      # too small: reserve below 10 %
+    assert out["f_intact"] == pytest.approx(0.75) and out["f_all"] == pytest.approx(1.25)
+    assert rows[2]["intact_passed"] and rows[2]["damage_passed"] == 2 and rows[2]["damage_total"] == 3
+    assert not rows[-1]["intact_passed"]                      # too big: GM lost
+    big = bu.scale_tanks(mods, ["T1"], 2.0)
+    assert big[1].elements[0].d_out == pytest.approx(4.0) and big[1].weights[0].mass_t == pytest.approx(20.0)
+    assert big[2].elements[0].d_out == pytest.approx(2.0)     # T2 untouched

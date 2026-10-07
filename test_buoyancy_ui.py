@@ -101,3 +101,15 @@ def test_platform_structure_section_shows_member_totals(tmp_path):
     assert labels["Members"] == "2"
     assert labels["Total length"] == "15 m"
     assert labels["Drag area (OD x L)"] == "12 m2"          # 1.0*10 + 0.4*5
+
+
+def test_tank_sizing_tab_runs_on_the_template():
+    at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=90)
+    at.run()
+    at.text_input(key="bu_path").set_value(str(ROOT / "docs" / "case_template.json")).run()
+    assert not at.exception
+    go = [b for b in at.button if b.key and b.key.startswith("bu_sz_go_")]
+    assert go, "sizing button missing"
+    go[0].click().run()
+    assert not at.exception
+    assert any("factor" in str(df.value.columns.tolist()).lower() for df in at.dataframe)

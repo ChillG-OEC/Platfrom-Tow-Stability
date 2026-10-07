@@ -143,7 +143,8 @@ def load_case(source: Union[str, Path, dict]) -> dict:
         raise CaseFileError(problems)
     return dict(name=str(raw.get("name", "case")), note=str(raw.get("note", "")), structure=structure,
                 modules=modules, states=states, params=params, criteria=crit,
-                reserve_min_pct=float(raw.get("reserve_min_pct", 0.0)), datum_offset_m=dz)
+                reserve_min_pct=float(raw.get("reserve_min_pct", 0.0)),
+                reserve_damaged_min_pct=float(raw.get("reserve_damaged_min_pct", 0.0)), datum_offset_m=dz)
 
 
 def _el_row(e: js.Element, dz: float) -> dict:
@@ -173,5 +174,6 @@ def dump_case(case: dict, path: Union[str, Path]) -> None:
                       ballast_t=m.ballast_t, ballast_z=None if m.ballast_z is None else m.ballast_z - dz,
                       note=m.note) for m in case["modules"]],
         states=case["states"], params=p, criteria=asdict(case["criteria"]),
-        reserve_min_pct=case.get("reserve_min_pct", 0.0))
+        reserve_min_pct=case.get("reserve_min_pct", 0.0),
+        reserve_damaged_min_pct=case.get("reserve_damaged_min_pct", 0.0))
     Path(path).write_text(json.dumps(out, indent=2), encoding="utf-8")

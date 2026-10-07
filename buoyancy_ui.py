@@ -222,6 +222,48 @@ def _structure_section(case: dict) -> None:
     _show(fig)
 
 
+def _sizing_tab(s, mods, states, params, crit, rm, rm_dmg, key) -> None:
+    """Scale the diameter of chosen tank modules (length and position fixed) and see which sizes pass."""
+    tank_names = [m.name for m in mods if m.elements]
+    if not tank_names:
+        st.info("No module with its own tank cylinders in this case, so there is nothing to size.")
+        return
+    st.caption("Scales the diameter of the chosen tank modules together (length and position unchanged). Tank steel "
+               "weight is scaled with volume. Everything else, including the criteria in the case file, stays as is.")
+    chosen = st.multiselect("Tank modules to scale", tank_names, default=tank_names, key=f"bu_sz_n_{key}")
+    c = st.columns(4)
+    f_min = c[0].number_input("Smallest factor", 0.1, 5.0, 0.6, 0.1, key=f"bu_sz_a_{key}")
+    f_max = c[1].number_input("Largest factor", 0.2, 6.0, 2.0, 0.1, key=f"bu_sz_b_{key}")
+    steps = int(c[2].number_input("Steps", 5, 61, 29, 1, key=f"bu_sz_s_{key}"))
+    rd = c[3].number_input("Damaged reserve min [%]", 0.0, 100.0, rm_dmg, 1.0, key=f"bu_sz_d_{key}")
+    if not chosen or f_max <= f_min:
+        st.info("Choose at least one module and make the largest factor bigger than the smallest.")
+        return
+    if st.button("Run sizing", key=f"bu_sz_go_{key}"):
+        out = bu.size_tanks(s, mods, states, params, crit, chosen, reserve_min_pct=rm, damaged_reserve_min_pct=rd,
+                            f_min=f_min, f_max=f_max, steps=steps)
+        df = pd.DataFrame(out["rows"])
+        if out["f_intact"] is None:
+            st.error("No size in this range passes the intact case. Widen the range or look at the limiting check below.")
+        else:
+            r1 = df[df.factor == out["f_intact"]].iloc[0]
+            st.success(f"Smallest size that passes intact: factor {out['f_intact']:.2f} "
+                       f"(diameter {r1.diameter_m:.2f} m, tank volume {r1.tank_volume_m3:.0f} m3).")
+        if out["f_all"] is None:
+            st.warning("No size in this range passes the intact case and every one-module damage case.")
+        else:
+            r2 = df[df.factor == out["f_all"]].iloc[0]
+            st.success(f"Smallest size that passes intact and all damage cases: factor {out['f_all']:.2f} "
+                       f"(diameter {r2.diameter_m:.2f} m, tank volume {r2.tank_volume_m3:.0f} m3).")
+        show = df.rename(columns=dict(factor="factor", diameter_m="diameter [m]", tank_volume_m3="tank volume [m3]",
+                                      weight_t="weight [t]", reserve_pct="reserve [%]", clearance_m="clearance [m]",
+                                      gm_min_m="GM [m]", intact_passed="intact pass", damage_passed="damage passed",
+                                      damage_total="damage cases", all_passed="all pass"))
+        st.dataframe(show.drop(columns=["floats"]).round(2), hide_index=True)
+        st.caption("Bigger is not always better: very large tanks can raise the reserve but lose GM or clearance. "
+                   "The table shows each size so you can see the window.")
+
+
 def _modules_section(case: dict, key: str) -> None:
     s, mods, params, crit = case["structure"], case["modules"], case["params"], case["criteria"]
     st.subheader("C · Buoyancy modules on the member geometry")
@@ -247,7 +289,7 @@ def _modules_section(case: dict, key: str) -> None:
         k[4].metric("Reserve", f"{r['reserve_pct']:.1f} %")
         (st.success if r["passed"] else st.error)("PASS against the case-file criteria" if r["passed"] else
                                                   "FAIL against the case-file criteria")
-    t1, t2 = st.tabs(["Sweep all combinations", "Flood one module at a time"])
+    t1, t2, t3 = st.tabs(["Sweep all combinations", "Flood one module at a time", "Size the tanks"])
     cols = ["case", "weight_t", "capacity_t", "reserve_pct", "draft_m", "clearance_m", "gm_min_m", "free_tilt_deg", "passed", "error"]
     with t1:
         if 2 ** len(mods) > 64:
@@ -259,6 +301,8 @@ def _modules_section(case: dict, key: str) -> None:
         if st.button("Run damage cases", key=f"bu_dm_{key}"):
             rows = bu.damage_cases(s, mods, states, params, crit, reserve_min_pct=rm)
             st.dataframe(pd.DataFrame(rows).reindex(columns=["damaged_module"] + cols), hide_index=True)
+    with t3:
+        _sizing_tab(s, mods, states, params, crit, rm, float(case.get("reserve_damaged_min_pct", 0.0)), key)
 
 
 def render() -> None:
