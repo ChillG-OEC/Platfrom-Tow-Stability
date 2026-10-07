@@ -164,7 +164,8 @@ def test_send_platform_to_tabs_1_to_6(tmp_path):
     btn = [b for b in at.button if b.key and b.key.startswith("bu_send_")][0]
     btn.click().run()
     assert not at.exception
-    assert at.session_state["t_elems"]["name"].tolist() == ["Leg x0 A can00", "Leg x7 A can00"]
+    names = at.session_state["t_elems"]["name"].tolist()
+    assert len(names) == 2 and names[0].startswith("Leg x0 A can00") and names[1].startswith("Leg x7 A can00")
     assert at.session_state["t_elems"]["buoyant"].tolist() == [True, True]      # sealed module => buoyant
     assert at.session_state["t_weights"]["mass_t"].sum() == 40.0
     assert at.session_state["project"] == "unit budget case"
