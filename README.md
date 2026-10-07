@@ -18,6 +18,9 @@ placeholders. Confirm both before anything goes into a client brief.
 | `report.py` | Draft A4 PDF report |
 | `sensitivity.py` | Tank-count and tow-connection studies |
 | `viz.py` | 3D jacket drawing (solid tubes, waterline, CoG/CoB, tow and wind arrows) |
+| `buoyancy.py`, `case_io.py`, `buoyancy_ui.py` | Buoyancy modules, case files and tab 7 (budget, environment, platform, modules, tank sizing) |
+| `metocean.py` | Operability screen from percentile tables (Hs, wind) |
+| `towplan.py`, `towplan_ui.py` | Tab 8: 1000 m to 100 m approach, tow vessels only |
 | `test_jacket_stability.py` | Validation tests (`pytest -q`) |
 | `requirements.txt` | streamlit, numpy, pandas, plotly, reportlab |
 
@@ -197,3 +200,16 @@ Project data (weights, geometry, criteria) belongs in a case file kept outside t
 `cases/`, `private/` and `*.case.json` are git-ignored.
 Elements have a `tank` flag (default True); sealed legs and braces are `tank=False`, so the
 "tank emerged length" check only looks at real tanks.
+
+## Tab 7 features (case file loaded)
+
+* **Platform structure**: member count, length, tubular steel mass, drag area and a 3D view; legs are labelled by grid line
+  (A1, A2, B1, B2, A''1, A''2) when members are named `Leg x<col> <A|B|C> ...`.
+* **Use this platform in tabs 1-6**: assembles structure + modules (in the chosen states) and loads them into the input tables.
+  The tow point it sets is a placeholder; check tab 2.
+* **Size the tanks** (section C): scales the diameter of the chosen tank modules and shows the sizes that pass intact and
+  intact + every one-module damage case. Tank steel weight scales with volume. The case file may carry `reserve_damaged_min_pct`.
+* Tab 3 shows the case-file platform with leg labels, an elevation-band zoom and a labelled plan view.
+* Tab 2 carries current speed and direction (see `towplan.py` and the tow-plan tab for the approach drag).
+
+Tests: `python -m pytest -q` (also run by GitHub Actions on every push).
