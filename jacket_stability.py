@@ -858,6 +858,17 @@ class JacketModel:
             n_members=len(self.elements), n_weights=len(self.weights))
 
 
+def criteria_from_widgets(w: dict) -> "Criteria":
+    """Criteria from saved input widgets.  A check is only active when its switch is on (files from before the
+    switches existed: on when the value is above zero)."""
+    def lim(on: str, val: str) -> float:
+        v = float(w.get(val, 0.0) or 0.0)
+        return v if bool(w.get(on, v > 0.0)) else 0.0
+    return Criteria(gm_min=w["c_gm_min"], heel_max_deg=w["c_heel_max_deg"], ratio_min=w["c_ratio_min"],
+                    cap_deg=w["c_cap_deg"], df_min_deg=lim("c_df_on", "c_df_min_deg"),
+                    clear_min_m=lim("c_clear_on", "c_clear_min_m"), emerged_min_m=lim("c_emerged_on", "c_emerged_min_m"))
+
+
 # ----------------------------------------------------------------------------
 # Installation / set-down float check: seabed clearance, tank emergence, ballast headroom
 # ----------------------------------------------------------------------------

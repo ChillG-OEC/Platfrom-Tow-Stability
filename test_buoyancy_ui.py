@@ -301,3 +301,13 @@ def test_changed_inputs_supersede_the_result_and_block_the_report():
     at.run()
     assert any("Superseded result" in e.value for e in at.error)
     assert not any("meet the criteria" in s.value for s in at.success)
+
+
+def test_enabled_check_with_zero_limit_blocks_the_run():
+    at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=120)
+    at.run()
+    at.session_state["c_clear_on"] = True
+    at.session_state["c_clear_min_m"] = 0.0
+    at.run()
+    assert any("seabed clearance check is switched on but its minimum is 0" in e.value for e in at.sidebar.error)
+    assert at.sidebar.button[[b.label for b in at.sidebar.button].index("▶ Run analysis")].disabled

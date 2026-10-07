@@ -58,6 +58,7 @@ DEFAULTS = {
     "p_fsm": 0.0, "p_lr_mode": "area", "p_slice_m": 0.5, "p_trim_limit_deg": 25.0,
     "c_gm_min": 1.0, "c_heel_max_deg": 15.0, "c_ratio_min": 1.3, "c_cap_deg": 40.0,
     "c_df_min_deg": 0.0, "c_clear_min_m": float(EX["clear_min_m"]), "c_emerged_min_m": float(EX["emerged_min_m"]),
+    "c_df_on": False, "c_clear_on": float(EX["clear_min_m"]) > 0.0, "c_emerged_on": float(EX["emerged_min_m"]) > 0.0,
     "a_step": 45.0, "a_phi_min": -10.0, "a_phi_max": 50.0, "a_phi_step": 2.5,
     "a_scenario": "Intact",
 }
@@ -177,9 +178,7 @@ def parts_from_snapshot(snap: dict):
         fsc_m=snap["fsc_m"], lr_mode=w["p_lr_mode"], slice_m=w["p_slice_m"],
         trim_limit_deg=w["p_trim_limit_deg"],
         water_depth_m=w.get("p_depth_m", 0.0), tide_m=w.get("p_tide_m", 0.0))
-    crit = js.Criteria(gm_min=w["c_gm_min"], heel_max_deg=w["c_heel_max_deg"], ratio_min=w["c_ratio_min"],
-                       cap_deg=w["c_cap_deg"], df_min_deg=w["c_df_min_deg"],
-                       clear_min_m=w.get("c_clear_min_m", 0.0), emerged_min_m=w.get("c_emerged_min_m", 0.0))
+    crit = js.criteria_from_widgets(w)
     return els, wts, ops, params, crit
 
 
@@ -191,6 +190,9 @@ def apply_snapshot(data: dict) -> None:
     for k in ("p_depth_m", "p_tide_m", "c_clear_min_m", "c_emerged_min_m"):
         if k not in data.get("widgets", {}):
             ss[k] = 0.0          # files saved before the set-down check existed: check off
+    for on, val in (("c_df_on", "c_df_min_deg"), ("c_clear_on", "c_clear_min_m"), ("c_emerged_on", "c_emerged_min_m")):
+        if on not in data.get("widgets", {}):
+            ss[on] = float(ss.get(val, 0.0)) > 0.0       # older files: a limit above zero meant the check was on
     ss.t_weights = pd.DataFrame(data.get("weights", []), columns=W_COLS)
     el = pd.DataFrame(data.get("elements", []), columns=E_COLS)
     el["tank"] = el["tank"].fillna(True)        # files saved before the flag existed: every buoyant member counts as a tank
@@ -413,13 +415,17 @@ with tab_env:
     with k4:
         num("Integration cap [°]", "c_cap_deg", min_value=5.0, max_value=80.0, step=1.0)
     with k5:
-        num("Min downflood angle [°] (0 = off)", "c_df_min_deg", min_value=0.0, step=1.0)
+        st.checkbox("Check downflood angle", key="c_df_on")
+        num("Min downflood angle [°]", "c_df_min_deg", min_value=0.0, step=1.0, disabled=not st.session_state.c_df_on)
     q1, q2, _q3 = st.columns(3)
     with q1:
-        num("Min seabed clearance [m] (0 = off)", "c_clear_min_m", min_value=0.0, step=0.5,
+        st.checkbox("Check seabed clearance", key="c_clear_on")
+        num("Min seabed clearance [m]", "c_clear_min_m", min_value=0.0, step=0.5, disabled=not st.session_state.c_clear_on,
             help="Lowest point of the jacket to the seabed, level floating condition. Needs the water depth above.")
     with q2:
-        num("Min tank length above water [m] (0 = off)", "c_emerged_min_m", min_value=0.0, step=0.5,
+        st.checkbox("Check tank emergence", key="c_emerged_on")
+        num("Min tank length above water [m]", "c_emerged_min_m", min_value=0.0, step=0.5,
+            disabled=not st.session_state.c_emerged_on,
             help="Shortest length of any buoyancy tank that stays out of the water.")
 
     st.subheader("Analysis settings")
@@ -445,6 +451,12 @@ snap = make_snapshot(weights_df, elems_df, open_df, lines_df)
 cur_hash = snap_hash(snap)
 els, wts, ops, params, crit = parts_from_snapshot(snap)
 errors, warnings = js.validate_inputs(els, wts, ops, params)
+for _on, _val, _what in (("c_df_on", "c_df_min_deg", "downflood angle"), ("c_clear_on", "c_clear_min_m", "seabed clearance"),
+                         ("c_emerged_on", "c_emerged_min_m", "tank emergence")):
+    if st.session_state.get(_on) and float(st.session_state.get(_val, 0.0)) <= 0.0:
+        errors = list(errors) + [f"The {_what} check is switched on but its minimum is 0. Enter a limit or switch the check off."]
+    if st.session_state.get("c_clear_on") and _on == "c_clear_on" and float(st.session_state.get("p_depth_m", 0.0)) <= 0.0:
+        errors = list(errors) + ["The seabed clearance check is on but the water depth in tab 2 is 0."]
 try:   # extra model checks (model_validation.py); a failure here must never stop the app
     _dmg_now = str(st.session_state.get("a_scenario", "Intact")).startswith("Damaged")
     errors, warnings = mv.merge_with_legacy(
@@ -737,9 +749,9 @@ with tab_res:
             f1.metric("Waterline above base", f"{F['draft_total']:.2f} m", help="Waterline height above the lowest point of the structure.")
             f2.metric("Seabed clearance", fmt(F["clearance"], 2, " m") if F["clearance"] is not None else "n/a",
                       help=("Water depth + tide - waterline height. " if F["clearance"] is not None else "Enter a water depth in tab 2.")
-                      + (f"Criterion ≥ {rcrit.clear_min_m:.2f} m" if rcrit.clear_min_m > 0 else ""))
+                      + (f"Criterion ≥ {rcrit.clear_min_m:.2f} m" if rcrit.clear_min_m > 0 else "Not checked."))
             f3.metric("Min tank above water", fmt(F["emerged_min"], 2, " m"),
-                      help=f"Criterion ≥ {rcrit.emerged_min_m:.2f} m" if rcrit.emerged_min_m > 0 else None)
+                      help=f"Criterion ≥ {rcrit.emerged_min_m:.2f} m" if rcrit.emerged_min_m > 0 else "Not checked.")
             f4.metric("Freeboard to top of jacket", f"{F['freeboard_top']:.1f} m")
             g1, g2, g3, g4 = st.columns(4)
             g1.metric("GM (level, no loads)", f"{F['gm_min']:.2f} m")

@@ -47,9 +47,7 @@ ASSUMPTIONS = [
 def build_pdf(snap: dict, res: dict, meta: dict, prepared: str, checked: str, rev: str) -> io.BytesIO:
     w = snap["widgets"]
     S, U = res["summary"], res["upright"]
-    crit_ = js.Criteria(gm_min=w["c_gm_min"], heel_max_deg=w["c_heel_max_deg"], ratio_min=w["c_ratio_min"],
-                        cap_deg=w["c_cap_deg"], df_min_deg=w["c_df_min_deg"],
-                        clear_min_m=w.get("c_clear_min_m", 0.0), emerged_min_m=w.get("c_emerged_min_m", 0.0))
+    crit_ = js.criteria_from_widgets(w)
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=36, rightMargin=36, topMargin=92, bottomMargin=40,
                             title="Jacket wet-tow stability - screening")

@@ -433,3 +433,11 @@ def test_kg_kb_base_are_measured_from_lowest_point_of_structure():
     assert abs(h["kg_base"] - (m.G[2] - h["bbox_lo"][2])) < 1e-9
     assert abs(h["kb_base"] - (h["B_body"][2] - h["bbox_lo"][2])) < 1e-9
     assert h["kb_base"] > h["kg_base"] - 1e-9 or h["gm_x"] > 0   # tanks high: B above G
+
+
+def test_criteria_checks_need_their_switch_and_old_files_still_work():
+    base = dict(c_gm_min=1.0, c_heel_max_deg=15.0, c_ratio_min=1.3, c_cap_deg=40.0)
+    off = js.criteria_from_widgets(dict(base, c_clear_min_m=5.0, c_clear_on=False, c_emerged_min_m=3.0, c_emerged_on=True))
+    assert off.clear_min_m == 0.0 and off.emerged_min_m == 3.0 and off.df_min_deg == 0.0
+    old = js.criteria_from_widgets(dict(base, c_clear_min_m=5.0, c_emerged_min_m=0.0, c_df_min_deg=0.0))   # no switches saved
+    assert old.clear_min_m == 5.0 and old.emerged_min_m == 0.0
