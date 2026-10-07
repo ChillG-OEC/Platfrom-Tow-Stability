@@ -266,6 +266,24 @@ def legs_from_elements(elements) -> "pd.DataFrame | None":
     return _leg_table(pd.DataFrame(rows)) if rows else None
 
 
+def _plan_figure(elements, legs) -> go.Figure:
+    """Plan view (x across, y up) of all members in light grey with the legs labelled by grid name."""
+    fig = go.Figure()
+    xs, ys = [], []
+    for e in elements:
+        xs += [e.p1[0], e.p2[0], None]
+        ys += [e.p1[1], e.p2[1], None]
+    fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines", line=dict(color="#9aa3ad", width=1), hoverinfo="skip", showlegend=False))
+    if legs is not None:
+        fig.add_trace(go.Scatter(x=legs.x, y=legs.y, mode="markers+text", text=[f"<b>{n}</b>" for n in legs.leg],
+                                 textposition="top right", textfont=dict(size=16, color="#c00000"),
+                                 marker=dict(size=11, color="#1f4e79"), showlegend=False,
+                                 hovertext=[f"{r.leg}: x {r.x:.1f}, y {r.y:.1f} m" for r in legs.itertuples()], hoverinfo="text"))
+    fig.update_layout(height=520, margin=dict(l=0, r=0, t=30, b=0), title=dict(text="Plan view (x across, y up)", font=dict(size=14)),
+                      xaxis=dict(title="x [m]", scaleanchor="y", constrain="domain"), yaxis=dict(title="y [m]"))
+    return fig
+
+
 def render_case_platform(raw: dict) -> None:
     """Platform drawn from the loaded case file with grid leg labels (used by the Geometry check tab)."""
     import viz
@@ -278,14 +296,32 @@ def render_case_platform(raw: dict) -> None:
     if not s.elements:
         st.info("The loaded case file has no members yet.")
         return
-    fig = viz.jacket_figure(s.elements, s.weights, s.openings, case["params"], show_triad=True,
-                            title="Platform from the case file, as built (body axes)")
+    dz = float(case.get("datum_offset_m", 0.0))
     legs = legs_from_elements(s.elements)
-    if legs is not None:
-        for r in legs.itertuples():
-            fig.add_trace(go.Scatter3d(x=[r.x], y=[r.y], z=[r.top_z + 2.0], mode="text", text=[r.leg],
-                                       textfont=dict(size=14), showlegend=False, hoverinfo="skip"))
-    _show(fig)
+    zs = [z for e in s.elements for z in (e.p1[2], e.p2[2])]
+    zlo, zhi = min(zs), max(zs)
+    el_lo, el_hi = zlo - dz, zhi - dz
+    band = st.slider("Zoom to elevation band (EL on the MSL datum, m)", float(round(el_lo)), float(round(el_hi) + 1),
+                     (float(round(el_lo)), float(round(el_hi) + 1)), step=1.0, key="geo_band")
+    b0, b1 = band[0] + dz, band[1] + dz
+    full = (b0 <= zlo + 0.5) and (b1 >= zhi - 0.5)
+    left, right = st.columns([3, 2])
+    with left:
+        fig = viz.jacket_figure(s.elements, s.weights, s.openings, case["params"], show_triad=False,
+                                title="Platform from the case file, as built")
+        if legs is not None:
+            for r in legs.itertuples():
+                zl = min(r.top_z, b1) - (0.04 * (b1 - b0) if not full else -4.0 - (6.0 if r.leg.startswith("B") else 0.0))
+                if not full and not (r.bottom_z <= b1 and r.top_z >= b0):
+                    continue
+                fig.add_trace(go.Scatter3d(x=[r.x], y=[r.y], z=[zl], mode="text", text=[f"<b>{r.leg}</b>"],
+                                           textfont=dict(size=16, color="#c00000"), showlegend=False, hoverinfo="skip"))
+        scene = dict(aspectmode="data", zaxis=dict(range=[b0 - 1.0, b1 + (12.0 if full else 1.0)]),
+                     camera=dict(eye=dict(x=3.0, y=-3.3, z=1.1) if full else dict(x=1.25, y=-1.4, z=0.8)))
+        fig.update_layout(height=760, scene=scene, updatemenus=[], title_text="", margin=dict(l=0, r=0, t=0, b=0))
+        _show(fig)
+    with right:
+        _show(_plan_figure(s.elements, legs))
     if legs is not None:
         st.markdown("**Legs by grid line** (columns 1 and 2 = x, rows A'' / A / B = y). z is from the base; add 92.4 m for EL.")
         st.dataframe(legs.rename(columns=dict(x="x [m]", y="y [m]", top_z="top z [m]", bottom_z="bottom z [m]",
