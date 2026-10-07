@@ -86,3 +86,18 @@ def test_tow_plan_tab_works_without_a_case_file():
     at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=90).run()
     assert not at.exception
     assert any("Time for the approach" in m.label for m in at.metric)
+
+
+def test_platform_structure_section_shows_member_totals(tmp_path):
+    case = _budget_case()
+    case["structure"]["elements"] = [
+        dict(name="Leg a", x1=0, y1=0, z1=0, x2=0, y2=0, z2=10, d_out=1.0, d_in=0.9),
+        dict(name="Brace a", x1=0, y1=0, z1=0, x2=5, y2=0, z2=0, d_out=0.4, d_in=0.0)]
+    p = tmp_path / "s.case.json"
+    p.write_text(json.dumps(case))
+    at = _run(p)
+    assert not at.exception
+    labels = {m.label: m.value for m in at.metric}
+    assert labels["Members"] == "2"
+    assert labels["Total length"] == "15 m"
+    assert labels["Drag area (OD x L)"] == "12 m2"          # 1.0*10 + 0.4*5

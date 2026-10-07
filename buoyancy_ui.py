@@ -182,6 +182,46 @@ def _environment_section(raw: dict) -> None:
         st.caption("• " + str(n))
 
 
+def _structure_section(case: dict) -> None:
+    """Platform (steel) members: counts, lengths, tubular steel mass, drag area and a 3D view."""
+    els = case["structure"].elements
+    if not els:
+        return
+    st.subheader("Platform structure (members only, no buoyancy items)")
+    import math
+    import numpy as np
+    rows = []
+    for e in els:
+        L = math.dist(e.p1, e.p2)
+        a = math.pi / 4 * (e.d_out ** 2 - e.d_in ** 2)
+        rows.append(dict(name=e.name, group=("Legs" if e.name.startswith("Leg") else "Braces" if e.name.startswith("Brace")
+                                              else "Plan frames" if e.name.startswith("Plan") else "Other"),
+                         od_mm=round(e.d_out * 1000, 1), length_m=L, steel_t=a * L * 7.85, area_m2=e.d_out * L,
+                         x1=e.p1[0], y1=e.p1[1], z1=e.p1[2], x2=e.p2[0], y2=e.p2[1], z2=e.p2[2]))
+    df = pd.DataFrame(rows)
+    pts = np.array([[r["x1"], r["y1"], r["z1"]] for r in rows] + [[r["x2"], r["y2"], r["z2"]] for r in rows])
+    k = st.columns(5)
+    k[0].metric("Members", f"{len(df)}")
+    k[1].metric("Total length", f"{df.length_m.sum():.0f} m")
+    k[2].metric("Tubular steel", f"{df.steel_t.sum():.1f} t")
+    k[3].metric("Drag area (OD x L)", f"{df.area_m2.sum():.0f} m2")
+    k[4].metric("Height", f"{np.ptp(pts[:, 2]):.1f} m")
+    st.caption("Tubular steel at 7.85 t/m3 from the member sizes; the bill of materials also includes plate, mudmat and "
+               "other items, so compare with the weight control report as a screen only.")
+    g = df.groupby(["group", "od_mm"], as_index=False).agg(members=("name", "count"), length_m=("length_m", "sum"),
+                                                          steel_t=("steel_t", "sum")).round(1)
+    st.dataframe(g, hide_index=True)
+    colour = {"Legs": "#1f4e79", "Braces": "#c0504d", "Plan frames": "#7f7f7f", "Other": "#000000"}
+    fig = go.Figure()
+    for grp, d in df.groupby("group"):
+        xs, ys, zs = [], [], []
+        for r in d.itertuples():
+            xs += [r.x1, r.x2, None]; ys += [r.y1, r.y2, None]; zs += [r.z1, r.z2, None]
+        fig.add_trace(go.Scatter3d(x=xs, y=ys, z=zs, mode="lines", name=grp, line=dict(color=colour[grp], width=4)))
+    fig.update_layout(height=520, margin=dict(l=0, r=0, t=10, b=0), scene=dict(aspectmode="data"))
+    _show(fig)
+
+
 def _modules_section(case: dict, key: str) -> None:
     s, mods, params, crit = case["structure"], case["modules"], case["params"], case["criteria"]
     st.subheader("C · Buoyancy modules on the member geometry")
@@ -243,4 +283,5 @@ def render() -> None:
     except case_io.CaseFileError as exc:
         st.error("Case file problems:\n\n" + "\n".join(f"- {p}" for p in exc.problems))
         return
+    _structure_section(case)
     _modules_section(case, key)
