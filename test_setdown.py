@@ -66,3 +66,19 @@ def test_set_down_tab_runs_on_a_sent_case(tmp_path):
     assert not at.exception
     assert not any("Set-down tab failed" in e.value for e in at.error)
     assert any("Ballast to add between stages" in s.value for s in at.subheader)
+
+
+def test_stage_advice_says_do_not_proceed_and_how_to_recover():
+    els, wts, ops, p = _column_jacket()
+    # 0.5 m stage with the ballast set at MSL: LAT is 1 m lower, so the structure is on the seabed at LAT
+    res = sd.sequence(els, wts, ops, p, 35.0, {"LAT": 0.0, "MSL": 1.0, "HAT": 2.0}, [10.0, 0.5], "MSL", 5.0, gm_min=0.0)
+    names = {10.0: "After upending", 0.5: "Near the target"}
+    adv = sd.stage_advice(res, names, "MSL", gm_min=0.0)
+    assert adv[0][0] == 10.0 and adv[1][0] == 0.5
+    ok10, ok5 = adv[0][1], adv[1][1]
+    txt = " ".join(t for _, _, t in adv)
+    assert not ok5 and "grounds at LAT" in txt and "wait for a higher tide, or deballast" in txt
+    assert "Do not proceed" in txt
+    # a gentle case: nothing flagged
+    calm = sd.stage_advice(sd.sequence(els, wts, ops, p, 35.0, {"LAT": 0.0}, [10.0], "LAT", 5.0), {10.0: "x"}, "LAT", 0.0)
+    assert calm[0][1] and "no problem" in calm[0][2]

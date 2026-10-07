@@ -24,6 +24,7 @@ placeholders. Confirm both before anything goes into a client brief.
 | `towplan.py`, `towplan_ui.py` | Tab 8: 1000 m to 100 m approach, tow vessels only |
 | `setdown.py`, `setdown_ui.py` | Tab 9: lowering onto the seabed (10 m, 5 m, set-down) with ballast, GM and the tidal range |
 | `parsing.py` | Strict number and Boolean parsing for imported values |
+| `recovery.py` | Searches practical recovery measures for a failing case (tow speed, pull-in line, connection height, tanks, heading, modules, tide) |
 | `test_jacket_stability.py` | Validation tests (`pytest -q`) |
 | `requirements.txt` | streamlit, numpy, pandas, plotly, reportlab |
 

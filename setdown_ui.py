@@ -81,6 +81,9 @@ def render(parts, depth0: float, tide0: float, gm_min: float, project: str, is_d
         txt = "sinks (all buoyancy used)" if r["saturated"] else f"{r['ballast_t']:.0f} t ballast"
         col.metric(f"{STAGE_NAMES[i]} ({clr[i]:g} m)", txt,
                    help="Ballast on board at this clearance, at the tide chosen above.")
+    st.subheader("Go / no-go by stage")
+    for _c, _ok, _txt in sd.stage_advice(res, names, dt, gm_min):
+        (st.success if _ok else st.error)(_txt)
     st.subheader("Ballast and stability by stage and tide")
     tbl = pd.DataFrame([dict(stage=names[r["stage"]], clearance_m=r["stage"], tide=r["tide"],
                              water_over_base_m=r["depth_total_m"], waterline_draft_m=r["draft_m"],

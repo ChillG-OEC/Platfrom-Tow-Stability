@@ -102,3 +102,35 @@ def curve(els, wts, ops, params, depth_m: float, tides: dict, c_max: float, c_mi
             out.append(dict(tide=name, clearance_m=float(c),
                             ballast_t=_displaced_t(m0, zb + depth_m + t - float(c)) - m0.W))
     return out
+
+
+def stage_advice(res: dict, names: dict, design_tide: str, gm_min: float = 0.0) -> list:
+    """Plain-language verdict per stage from a sequence result: what to do, and when not to go on to the next stage.
+    Returns [(stage clearance, ok, text)]."""
+    out = []
+    stages = [st["stage"] for st in res["steps"]]
+    for i, c in enumerate(stages):
+        rows = [r for r in res["rows"] if r["stage"] == c]
+        problems, fixes = [], []
+        for r in rows:
+            nm = f"{names.get(c, c)} at {r['tide']}"
+            if r["saturated"] and c > 0:
+                problems.append(f"{nm}: every sealed member is under water, so buoyancy cannot hold this clearance")
+                fixes.append("restore or add buoyancy, or accept that it settles to the seabed")
+            elif r["ballast_t"] < 0 and not r["saturated"]:
+                problems.append(f"{nm}: the structure is too light to sit this deep; {-r['ballast_t']:.0f} t would have to be shed")
+                fixes.append(f"deballast or remove at least {-r['ballast_t']:.0f} t")
+            if r["gm_min_m"] is not None and gm_min > 0 and r["gm_min_m"] < gm_min:
+                problems.append(f"{nm}: GM {r['gm_min_m']:.2f} m is below {gm_min:.2f} m")
+                fixes.append("lower the ballast, press up slack tanks or restore a buoyancy module")
+        for a in [a for a in res["across"] if a["stage"] == c]:
+            if c > 0 and a["clearance_m"] <= 0:
+                problems.append(f"{names.get(c, c)}: with the ballast set at {design_tide}, the structure grounds at {a['tide']}")
+                fixes.append("wait for a higher tide" + (f", or deballast {abs(a['extra_ballast_to_hold_t']):.0f} t before it falls"
+                                                         if a["extra_ballast_to_hold_t"] < 0 else ""))
+        if problems:
+            nxt = f"Do not proceed to {names.get(stages[i + 1], stages[i + 1])}" if i + 1 < len(stages) else "Do not proceed"
+            out.append((c, False, f"{nxt}. " + "; ".join(dict.fromkeys(problems)) + ". To recover: " + "; ".join(dict.fromkeys(fixes)) + "."))
+        else:
+            out.append((c, True, f"{names.get(c, c)}: no problem found at any tide."))
+    return out

@@ -5,6 +5,7 @@ Run:  streamlit run app.py
 """
 from __future__ import annotations
 
+import copy
 import inspect
 import json
 import math
@@ -18,7 +19,10 @@ import streamlit as st
 
 import jacket_stability as js
 import model_validation as mv
+import buoyancy as bu
 import buoyancy_ui
+import case_io
+import recovery
 import setdown_ui
 import towplan_ui
 import sensitivity as sv
@@ -234,6 +238,7 @@ if _pend:
     _ph.update({k: DEFAULTS[k] for k in ("p_tow_heading_deg", "p_wind_speed_kn")
                 if abs(float(st.session_state.get(k, DEFAULTS[k])) - float(DEFAULTS[k])) < 1e-9})
     st.session_state["placeholders"] = _ph
+    st.session_state["send_states"] = dict(_pend.get("states", {}))
     st.session_state["send_case_done"] = _pend["name"]
     st.session_state["p_fsm"] = 0.0
     st.session_state["a_scenario"] = "Damaged (flooded elements lose buoyancy)" if _pend.get("damaged") else "Intact"
@@ -706,6 +711,67 @@ with tab_geo:
 # ----------------------------------------------------------------------------
 # Tab 4: results
 # ----------------------------------------------------------------------------
+
+def _recovery_inputs(res_snap: dict):
+    """Named tanks for ballast and one snapshot per buoyancy module that is not sealed, from the case file in tab 7."""
+    raw = st.session_state.get("case_raw")
+    if not raw or st.session_state.get("send_case_done") != raw.get("name"):
+        return [], []
+    try:
+        case = case_io.load_case(raw)
+    except case_io.CaseFileError:
+        return [], []
+    states = st.session_state.get("send_states", {})
+    tanks = []
+    for m in case["modules"]:
+        for e in m.elements:
+            vol = math.pi * (e.d_out ** 2 - e.d_in ** 2) / 4.0 * float(np.linalg.norm(np.asarray(e.p2, float) - np.asarray(e.p1, float)))
+            c = 0.5 * (np.asarray(e.p1, float) + np.asarray(e.p2, float))
+            tanks.append(dict(name=m.name, x=float(c[0]), y=float(c[1]), z=float(c[2]), cap_t=0.9 * vol * 1.025))
+    options = []
+    for m in case["modules"]:
+        if states.get(m.name, "sealed") != "sealed":
+            try:
+                e2, w2, o2, _d = bu.assemble(case["structure"], case["modules"], {**states, m.name: "sealed"})
+            except ValueError:
+                continue
+            s2 = copy.deepcopy(res_snap)
+            s2.update(recovery.tables_from_assembled(e2, w2, o2))
+            options.append(dict(name=m.name, state=states.get(m.name), snap=s2))
+    return tanks, options
+
+
+def _recovery_panel(res: dict, rcrit: js.Criteria) -> None:
+    S, F = res["summary"], res.get("float")
+    failing = (not S["passed"]) or (F is not None and not F["passed"])
+    if not failing:
+        return
+    ss = st.session_state
+    with st.expander("What can be done about this? (recovery measures)", expanded=True):
+        st.caption("Each lever is searched with the same model until the case passes. A measure is marked verified only when "
+                   "a full re-run at the proposed value passes. Screening indications, not an operating procedure.")
+        if st.button("Find recovery measures", key="rec_go"):
+            tanks, options = _recovery_inputs(ss.res_snap)
+            bar = st.progress(0.0, text="Searching...")
+            meta = ss.get("res_meta", {})
+            try:
+                ms = recovery.propose(ss.res_snap, lambda s: parts_from_snapshot(s), np.asarray(meta["betas"]), np.asarray(meta["grid"]),
+                                      bool(res["damaged"]), fail_betas=[h["beta"] for h in res["heads"] if not h["analysis"]["passed"]], tanks=tanks, module_options=options, float_check=F, crit_float=rcrit,
+                                      progress=lambda f, m: bar.progress(f, text=m))
+                ss.recovery = dict(hash=ss.res_hash, measures=ms)
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"Recovery search failed: {exc}")
+            bar.empty()
+        rec = ss.get("recovery")
+        if rec and rec["hash"] == ss.res_hash:
+            rows = []
+            for m in rec["measures"]:
+                e = m.effect or {}
+                rows.append({"Measure": m.action, "Verified": "yes" if m.verified else "no",
+                             "Min GM [m]": fmt(e.get("gm_min"), 2) if e else "", "Max heel [°]": fmt(e.get("heel_max"), 1) if e else "",
+                             "Min area ratio": fmt(e.get("ratio_min"), 2) if e else "", "Note": m.detail})
+            st.dataframe(pd.DataFrame(rows), hide_index=True)
+
 res = st.session_state.res
 with tab_res:
     if res is None:
@@ -719,6 +785,8 @@ with tab_res:
                      "Press Run analysis to update.")
         S, U = res["summary"], res["upright"]
         scen = "DAMAGED" if res["damaged"] else "INTACT"
+        if not stale:
+            _recovery_panel(res, rcrit)
         if stale:
             pass
         elif S["passed"]:
