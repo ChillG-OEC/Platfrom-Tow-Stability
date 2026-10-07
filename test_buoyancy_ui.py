@@ -149,3 +149,22 @@ def test_geometry_tab_has_no_case_section_without_a_file():
     at.run()
     assert not at.exception
     assert not any("Platform from the loaded case file" in s.value for s in at.subheader)
+
+
+def test_send_platform_to_tabs_1_to_6(tmp_path):
+    case = _budget_case()
+    case["structure"] = {
+        "elements": [dict(name="Leg x0 A can00", x1=0, y1=0, z1=0, x2=0, y2=0, z2=50, d_out=1.0, d_in=0.9),
+                     dict(name="Leg x7 A can00", x1=7, y1=0, z1=0, x2=7, y2=0, z2=50, d_out=1.0, d_in=0.9)],
+        "weights": [dict(item="Main structure", mass_t=40.0, x=3.5, y=0, z=20.0)]}
+    case["modules"] = [dict(name="legs", members=["Leg x0 A can00", "Leg x7 A can00"])]
+    p = tmp_path / "send.case.json"
+    p.write_text(json.dumps(case))
+    at = _run(p)
+    btn = [b for b in at.button if b.key and b.key.startswith("bu_send_")][0]
+    btn.click().run()
+    assert not at.exception
+    assert at.session_state["t_elems"]["name"].tolist() == ["Leg x0 A can00", "Leg x7 A can00"]
+    assert at.session_state["t_elems"]["buoyant"].tolist() == [True, True]      # sealed module => buoyant
+    assert at.session_state["t_weights"]["mass_t"].sum() == 40.0
+    assert at.session_state["project"] == "unit budget case"

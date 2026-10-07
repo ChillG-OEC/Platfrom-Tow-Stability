@@ -214,6 +214,17 @@ if _up is not None:
     except Exception as exc:  # noqa: BLE001
         st.sidebar.error(f"Could not read that file: {exc}")
 
+# Platform handed over from the case-file tab (tab 7): load it into the input tables before any widget exists
+_pend = st.session_state.pop("send_case_pending", None)
+if _pend:
+    _w = {k: v for k, v in _pend["widgets"].items() if k in DEFAULTS}
+    _w["project"] = str(_pend["name"])[:120]
+    apply_snapshot(dict(widgets=_w, weights=_pend["weights"], elements=_pend["elements"], openings=_pend["openings"],
+                        lines=[]))
+    st.session_state["send_case_done"] = _pend["name"]
+    st.session_state["p_fsm"] = 0.0
+    st.session_state["a_scenario"] = "Damaged (flooded elements lose buoyancy)" if _pend.get("damaged") else "Intact"
+
 # ----------------------------------------------------------------------------
 # Header
 # ----------------------------------------------------------------------------
