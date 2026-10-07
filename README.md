@@ -22,6 +22,7 @@ placeholders. Confirm both before anything goes into a client brief.
 | `metocean.py` | Operability screen from percentile tables (Hs, wind) |
 | `report_figs.py` | Vector 3D-style views (isometric, elevation, end, plan, waterline, G and B) for the PDF report |
 | `towplan.py`, `towplan_ui.py` | Tab 8: 1000 m to 100 m approach, tow vessels only |
+| `setdown.py`, `setdown_ui.py` | Tab 9: lowering onto the seabed (10 m, 5 m, set-down) with ballast, GM and the tidal range |
 | `test_jacket_stability.py` | Validation tests (`pytest -q`) |
 | `requirements.txt` | streamlit, numpy, pandas, plotly, reportlab |
 

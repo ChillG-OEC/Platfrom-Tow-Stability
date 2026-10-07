@@ -19,6 +19,7 @@ import streamlit as st
 import jacket_stability as js
 import model_validation as mv
 import buoyancy_ui
+import setdown_ui
 import towplan_ui
 import sensitivity as sv
 import viz
@@ -256,9 +257,9 @@ st.caption("Screening tool: free-to-trim heel sweep for a floating jacket on buo
            "wind + tow-line heeling, downflooding, damaged case. Not a substitute for a checked calculation.")
 
 status_box = st.container()          # filled once the inputs have been read
-tab_in, tab_env, tab_geo, tab_res, tab_sens, tab_rep, tab_buoy, tab_tow = st.tabs(
+tab_in, tab_env, tab_geo, tab_res, tab_sens, tab_rep, tab_buoy, tab_tow, tab_sd = st.tabs(
     ["1 · Inputs", "2 · Environment, tow & criteria", "3 · Geometry check", "4 · Results", "5 · Sensitivity",
-     "6 · Report", "7 · Buoyancy (case file)", "8 · Tow plan (approach)"])
+     "6 · Report", "7 · Buoyancy (case file)", "8 · Tow plan (approach)", "9 · Set-down"])
 
 # ----------------------------------------------------------------------------
 # Tab 1: inputs
@@ -1201,3 +1202,11 @@ with tab_tow:
         towplan_ui.render()
     except Exception as _exc:   # keep the other tabs usable
         st.error(f"Tow plan tab failed: {_exc}")
+
+with tab_sd:
+    try:
+        _sdp = parts_from_snapshot(snap)
+        setdown_ui.render(_sdp, float(_sdp[3].water_depth_m), float(_sdp[3].tide_m), float(_sdp[4].gm_min),
+                          snap_project, is_example)
+    except Exception as _exc:   # keep the other tabs usable
+        st.error(f"Set-down tab failed: {_exc}")
