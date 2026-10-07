@@ -113,3 +113,17 @@ def test_tank_sizing_tab_runs_on_the_template():
     go[0].click().run()
     assert not at.exception
     assert any("factor" in str(df.value.columns.tolist()).lower() for df in at.dataframe)
+
+
+def test_leg_table_uses_grid_names(tmp_path):
+    case = _budget_case()
+    case["structure"]["elements"] = [
+        dict(name="Leg x0 A can00", x1=0, y1=0, z1=0, x2=0, y2=0, z2=10, d_out=1.0, d_in=0.9),
+        dict(name="Leg x7 B tube01", x1=7, y1=7, z1=0, x2=7, y2=7, z2=20, d_out=1.0, d_in=0.9),
+        dict(name="Leg x7 C can00", x1=7, y1=-7, z1=0, x2=7, y2=-7, z2=5, d_out=1.0, d_in=0.9)]
+    p = tmp_path / "l.case.json"
+    p.write_text(json.dumps(case))
+    at = _run(p)
+    assert not at.exception
+    legs = [d.value for d in at.dataframe if "leg" in d.value.columns][0]
+    assert legs["leg"].tolist() == ["A1", "A''2", "B2"]

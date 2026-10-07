@@ -219,7 +219,40 @@ def _structure_section(case: dict) -> None:
             xs += [r.x1, r.x2, None]; ys += [r.y1, r.y2, None]; zs += [r.z1, r.z2, None]
         fig.add_trace(go.Scatter3d(x=xs, y=ys, z=zs, mode="lines", name=grp, line=dict(color=colour[grp], width=4)))
     fig.update_layout(height=520, margin=dict(l=0, r=0, t=10, b=0), scene=dict(aspectmode="data"))
+    legs = _leg_table(df)
+    if legs is not None:
+        for r in legs.itertuples():
+            fig.add_trace(go.Scatter3d(x=[r.x], y=[r.y], z=[r.top_z + 2.0], mode="text", text=[r.leg], textfont=dict(size=14),
+                                       showlegend=False, hoverinfo="skip"))
     _show(fig)
+    if legs is not None:
+        st.markdown("**Legs by grid line** (column 1 and 2 = x, rows A'' / A / B = y, as on the drawings)")
+        st.dataframe(legs.rename(columns=dict(x="x [m]", y="y [m]", top_z="top z [m]", bottom_z="bottom z [m]",
+                                              length_m="length [m]", pieces="segments", steel_t="steel [t]")).round(2),
+                     hide_index=True)
+
+
+def _leg_table(df: pd.DataFrame):
+    """One row per leg from member names of the form 'Leg x<col> <A|B|C> ...' (C = row A'').  None if no such names."""
+    import re
+    rows = {}
+    for r in df.itertuples():
+        m = re.match(r"Leg x(\d+(?:\.\d+)?) ([ABC])\b", r.name)
+        if not m:
+            continue
+        x = float(m.group(1))
+        row = {"A": "A", "B": "B", "C": "A''"}[m.group(2)]
+        col = 1 if x < 3.5 else 2
+        d = rows.setdefault(f"{row}{col}", dict(leg=f"{row}{col}", x=r.x1, y=r.y1, top_z=-1e9, bottom_z=1e9, length_m=0.0,
+                                               pieces=0, steel_t=0.0))
+        d["top_z"] = max(d["top_z"], r.z1, r.z2)
+        d["bottom_z"] = min(d["bottom_z"], r.z1, r.z2)
+        d["length_m"] += r.length_m
+        d["pieces"] += 1
+        d["steel_t"] += r.steel_t
+    if not rows:
+        return None
+    return pd.DataFrame(sorted(rows.values(), key=lambda d: (d["leg"][:-1] != "A", d["leg"])))
 
 
 def _sizing_tab(s, mods, states, params, crit, rm, rm_dmg, key) -> None:
