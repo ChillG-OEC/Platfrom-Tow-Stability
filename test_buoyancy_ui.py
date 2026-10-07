@@ -127,3 +127,25 @@ def test_leg_table_uses_grid_names(tmp_path):
     assert not at.exception
     legs = [d.value for d in at.dataframe if "leg" in d.value.columns][0]
     assert legs["leg"].tolist() == ["A1", "A''2", "B2"]
+
+
+def test_geometry_tab_shows_case_platform_with_leg_names(tmp_path):
+    case = _budget_case()
+    case["structure"]["elements"] = [
+        dict(name="Leg x0 A can00", x1=0, y1=0, z1=0, x2=0, y2=0, z2=10, d_out=1.0, d_in=0.9),
+        dict(name="Leg x7 B tube01", x1=7, y1=7, z1=0, x2=7, y2=7, z2=20, d_out=1.0, d_in=0.9)]
+    p = tmp_path / "g.case.json"
+    p.write_text(json.dumps(case))
+    at = _run(p)
+    assert not at.exception
+    assert any("Platform from the loaded case file" in s.value for s in at.subheader)
+    legs = [d.value for d in at.dataframe if "leg" in d.value.columns]
+    assert len(legs) == 2                                    # tab 3 and tab 7 each show the legs table
+    assert legs[0]["leg"].tolist() == ["A1", "B2"]
+
+
+def test_geometry_tab_has_no_case_section_without_a_file():
+    at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=90)
+    at.run()
+    assert not at.exception
+    assert not any("Platform from the loaded case file" in s.value for s in at.subheader)

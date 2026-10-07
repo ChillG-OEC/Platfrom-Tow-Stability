@@ -255,6 +255,44 @@ def _leg_table(df: pd.DataFrame):
     return pd.DataFrame(sorted(rows.values(), key=lambda d: (d["leg"][:-1] != "A", d["leg"])))
 
 
+def legs_from_elements(elements) -> "pd.DataFrame | None":
+    """Leg table (grid names) for a list of js.Element, or None when the members carry no leg names."""
+    import math
+    rows = []
+    for e in elements:
+        L = math.dist(e.p1, e.p2)
+        rows.append(dict(name=e.name, length_m=L, steel_t=math.pi / 4 * (e.d_out ** 2 - e.d_in ** 2) * L * 7.85,
+                         x1=e.p1[0], y1=e.p1[1], z1=e.p1[2], x2=e.p2[0], y2=e.p2[1], z2=e.p2[2]))
+    return _leg_table(pd.DataFrame(rows)) if rows else None
+
+
+def render_case_platform(raw: dict) -> None:
+    """Platform drawn from the loaded case file with grid leg labels (used by the Geometry check tab)."""
+    import viz
+    try:
+        case = case_io.load_case(raw)
+    except case_io.CaseFileError as exc:
+        st.error("Case file problems:\n\n" + "\n".join(f"- {p}" for p in exc.problems))
+        return
+    s = case["structure"]
+    if not s.elements:
+        st.info("The loaded case file has no members yet.")
+        return
+    fig = viz.jacket_figure(s.elements, s.weights, s.openings, case["params"], show_triad=True,
+                            title="Platform from the case file, as built (body axes)")
+    legs = legs_from_elements(s.elements)
+    if legs is not None:
+        for r in legs.itertuples():
+            fig.add_trace(go.Scatter3d(x=[r.x], y=[r.y], z=[r.top_z + 2.0], mode="text", text=[r.leg],
+                                       textfont=dict(size=14), showlegend=False, hoverinfo="skip"))
+    _show(fig)
+    if legs is not None:
+        st.markdown("**Legs by grid line** (columns 1 and 2 = x, rows A'' / A / B = y). z is from the base; add 92.4 m for EL.")
+        st.dataframe(legs.rename(columns=dict(x="x [m]", y="y [m]", top_z="top z [m]", bottom_z="bottom z [m]",
+                                              length_m="length [m]", pieces="segments", steel_t="steel [t]")).round(2),
+                     hide_index=True)
+
+
 def _sizing_tab(s, mods, states, params, crit, rm, rm_dmg, key) -> None:
     """Scale the diameter of chosen tank modules (length and position fixed) and see which sizes pass."""
     tank_names = [m.name for m in mods if m.elements]

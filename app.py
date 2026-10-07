@@ -621,6 +621,7 @@ with tab_geo:
                     st.dataframe(od.round(2), hide_index=True)
     for w_ in warnings:
         st.caption(f"⚠ {w_}")
+    geo_case_box = st.container()          # filled after tab 7 has read the case file
 
 # ----------------------------------------------------------------------------
 # Tab 4: results
@@ -1104,6 +1105,17 @@ with tab_buoy:
         buoyancy_ui.render()
     except Exception as _exc:    # this tab must never take the rest of the app down
         st.error(f"The buoyancy tab hit a problem: {_exc}")
+
+with geo_case_box:
+    _raw = st.session_state.get("case_raw")
+    if _raw and (_raw.get("structure") or {}).get("elements"):
+        st.divider()
+        st.subheader("Platform from the loaded case file")
+        st.caption("The picture above is the jacket from tab 1. This one is the platform in the case file loaded in tab 7.")
+        try:
+            buoyancy_ui.render_case_platform(_raw)
+        except Exception as _exc:
+            st.error(f"Could not draw the case-file platform: {_exc}")
 
 with tab_tow:
     try:
