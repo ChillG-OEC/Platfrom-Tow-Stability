@@ -225,6 +225,7 @@ if _pend:
     _w["project"] = str(_pend["name"])[:120]
     apply_snapshot(dict(widgets=_w, weights=_pend["weights"], elements=_pend["elements"], openings=_pend["openings"],
                         lines=[], flags=_pend.get("flags", [])))
+    st.session_state["placeholders"] = dict(_pend.get("placeholders", {}))
     st.session_state["send_case_done"] = _pend["name"]
     st.session_state["p_fsm"] = 0.0
     st.session_state["a_scenario"] = "Damaged (flooded elements lose buoyancy)" if _pend.get("damaged") else "Intact"
@@ -248,6 +249,7 @@ else:
 st.caption("Screening tool: free-to-trim heel sweep for a floating jacket on buoyancy tanks, "
            "wind + tow-line heeling, downflooding, damaged case. Not a substitute for a checked calculation.")
 
+status_box = st.container()          # filled once the inputs have been read
 tab_in, tab_env, tab_geo, tab_res, tab_sens, tab_rep, tab_buoy, tab_tow = st.tabs(
     ["1 · Inputs", "2 · Environment, tow & criteria", "3 · Geometry check", "4 · Results", "5 · Sensitivity",
      "6 · Report", "7 · Buoyancy (case file)", "8 · Tow plan (approach)"])
@@ -459,6 +461,26 @@ if is_example and _cr and (_cr.get("structure") or {}).get("elements"):
                     "Press 'Use in tabs 1-6' at the bottom of tab 7 to analyse the case-file platform.")
 for _f in st.session_state.get("data_flags", []):
     st.sidebar.warning(_f)
+
+_PH_LABEL = {"p_tow_x": "tow point", "p_tow_y": "tow point", "p_tow_z": "tow point",
+             "p_tow_heading_deg": "tow heading", "p_wind_speed_kn": "wind speed"}
+snap_project = str(snap["widgets"].get("project", "case"))
+with status_box:
+    _ss = st.session_state
+    _unset = sorted({_PH_LABEL[k] for k, v in _ss.get("placeholders", {}).items()
+                     if k in _ss and abs(float(_ss[k]) - float(v)) < 1e-9})
+    _syn = [f.replace("SYNTHETIC placeholder: ", "") for f in _ss.get("data_flags", [])]
+    if is_example:
+        st.warning("**Data in tabs 1-6:** the built-in demo jacket. Nothing here is project data.", icon="⚠️")
+    elif _syn or _unset:
+        parts = [f"**Data in tabs 1-6:** {snap_project} - structure and weights from the loaded case file"]
+        if _syn:
+            parts.append("**synthetic:** " + ", ".join(_syn))
+        if _unset:
+            parts.append("**not yet set from the design basis:** " + ", ".join(_unset))
+        st.warning(" | ".join(parts), icon="⚠️")
+    else:
+        st.success(f"**Data in tabs 1-6:** {snap_project}. No synthetic items flagged and no placeholders left.", icon="✅")
 for e in errors:
     st.sidebar.error(e)
 run = st.sidebar.button("▶ Run analysis", type="primary", disabled=bool(errors))
@@ -583,16 +605,18 @@ with tab_geo:
             if ss.res is not None and not res_cur:
                 st.caption("The equilibrium view returns after you re-run the analysis with the current inputs.")
 
+        _cb = st.radio("Colour members by", ["Type (legs, braces, tanks)", "Diameter"], horizontal=True, key="g_color")
+        _cb = "diameter" if _cb == "Diameter" else "type"
         left, right = st.columns([3, 2])
         with left:
             if T["err"] or show_view.startswith("As built"):
-                fig = viz.jacket_figure(els, wts, ops, params, show_triad=True,
+                fig = viz.jacket_figure(els, wts, ops, params, show_triad=True, color_by=_cb,
                                         title="As built - body axes (x forward, y athwart, z up)")
             elif show_view.startswith("Floating"):
                 h = T["h"]
                 stt = T["mdl"].attitude_state(0.0, 0.0, h["trim_deg"])
                 fig = viz.jacket_figure(els, wts, ops, params, rot=stt["rot"], zw=stt["zw"], g_pt=stt["G"],
-                                        b_pt=stt["B"], title=f"Floating level: draft {h['draft']:.2f} m, "
+                                        b_pt=stt["B"], color_by=_cb, title=f"Floating level: draft {h['draft']:.2f} m, "
                                                              f"trim {h['trim_deg']:.2f}°")
             else:
                 heads = ss.res["heads"]
@@ -606,11 +630,11 @@ with tab_geo:
                     stt = T["mdl"].attitude_state(hd["beta"], an["theta_s"], an["trim_at_s"])
                 if stt is None:
                     st.info("No static equilibrium for this heading, so there is no attitude to draw.")
-                    fig = viz.jacket_figure(els, wts, ops, params, show_triad=True, title="As built")
+                    fig = viz.jacket_figure(els, wts, ops, params, show_triad=True, title="As built", color_by=_cb)
                 else:
                     fig = viz.jacket_figure(
                         els, wts, ops, params, rot=stt["rot"], zw=stt["zw"], g_pt=stt["G"], b_pt=stt["B"],
-                        wind_beta_deg=hd["beta"],
+                        wind_beta_deg=hd["beta"], color_by=_cb,
                         title=f"Equilibrium under wind toward {hd['beta']:.0f}°: heel {an['theta_s']:.1f}°, "
                               f"trim {an['trim_at_s']:.2f}°")
             cap_ = fig.layout.title.text or ""

@@ -215,3 +215,32 @@ def test_sidebar_says_when_tabs_1_to_6_still_hold_the_demo_jacket(tmp_path):
     assert any("still hold the demo jacket" in i.value for i in at.sidebar.info)
     [b for b in at.button if b.key and b.key.startswith("bu_send_")][0].click().run()
     assert not any("still hold the demo jacket" in i.value for i in at.sidebar.info)
+
+
+def test_status_strip_demo_then_synthetic_after_send(tmp_path):
+    case = _budget_case()
+    case["structure"] = {"elements": [dict(name="L", x1=0, y1=0, z1=0, x2=0, y2=0, z2=50, d_out=1.0)],
+                         "weights": [dict(item="w", mass_t=10.0, x=0, y=0, z=20.0)]}
+    case["modules"] = [dict(name="Top tank (synthetic)", note="SYNTHETIC placeholder, replace",
+                            elements=[dict(name="t", x1=0, y1=0, z1=10, x2=0, y2=0, z2=30, d_out=2.0)],
+                            weights=[dict(item="ts", mass_t=1.0, x=0, y=0, z=20)])]
+    p = tmp_path / "s.case.json"
+    p.write_text(json.dumps(case))
+    at = _run(p)
+    at.run()
+    assert any("built-in demo jacket" in w.value for w in at.warning)
+    [b for b in at.button if b.key and b.key.startswith("bu_send_")][0].click().run()
+    txt = " ".join(w.value for w in at.warning)
+    assert "synthetic:" in txt and "Top tank (synthetic)" in txt and "tow point" in txt
+
+
+def test_window_figure_shades_pass_range():
+    import pandas as pd
+    import buoyancy_ui as ui
+    from types import SimpleNamespace as NS
+    df = pd.DataFrame(dict(diameter_m=[2, 3, 4, 5], floats=[True] * 4, reserve_pct=[1, 5, 12, 20],
+                           gm_min_m=[1, 2, 3, 4], clearance_m=[1, 2, 3, 4],
+                           intact_passed=[False, False, True, True], all_passed=[False, False, False, True]))
+    f = ui._window_figure(df, 10, 5, NS(gm_min=1.0, clear_min_m=2.0))
+    rects = [s for s in f.layout.shapes if s.type == "rect"]
+    assert {(int(r.x0), int(r.x1)) for r in rects} == {(4, 5), (5, 5)}

@@ -24,6 +24,9 @@ STYLE = {
     "Diagonal brace": ("#c0c7d1", 1.0),
 }
 FLOODED = ("#d62728", 0.65)
+# distinct, colour-blind-friendly colours for "colour by diameter" (largest diameter first)
+DIAMETER_PALETTE = ["#1f3b5c", "#2f6fb0", "#4fa3d1", "#2a9d8f", "#8ab17d", "#e9c46a", "#f4a261", "#e76f51",
+                    "#b5838d", "#7b6d8d", "#6d6875", "#9a8c98", "#3d405b", "#81b29a"]
 N_SIDES = 20
 
 
@@ -110,25 +113,38 @@ def jacket_figure(elements: Sequence[js.Element], weights: Sequence[js.WeightIte
                   rot: Optional[np.ndarray] = None, zw: Optional[float] = None,
                   g_pt: Optional[Sequence[float]] = None, b_pt: Optional[Sequence[float]] = None,
                   wind_beta_deg: Optional[float] = None, show_triad: bool = False,
-                  title: str = "") -> go.Figure:
+                  title: str = "", color_by: str = "type") -> go.Figure:
     """Draw the jacket.  rot = space<-body rotation (None = as built); zw = waterline
     height in the space frame (None = no water drawn); g_pt/b_pt = CoG/CoB in space."""
     r_m = np.eye(3) if rot is None else np.asarray(rot, float)
     fig = go.Figure()
 
+    by_d = color_by == "diameter"
+    dia_col: dict[str, str] = {}
+    if by_d:
+        ds = sorted({round(e.d_out * 1000.0) for e in elements}, reverse=True)
+        for i, dmm in enumerate(ds):
+            dia_col[f"Ø{dmm:.0f} mm"] = DIAMETER_PALETTE[i % len(DIAMETER_PALETTE)]
     groups: dict[str, list] = {}
     for e in elements:
         p1, p2 = r_m @ np.asarray(e.p1, float), r_m @ np.asarray(e.p2, float)
         if np.linalg.norm(p2 - p1) < 1e-9:
             continue
-        key = "Flooded tank (damage case)" if (e.buoyant and e.flooded) else js.member_kind(e)
+        if e.buoyant and e.flooded:
+            key = "Flooded tank (damage case)"
+        elif by_d:
+            key = f"Ø{round(e.d_out * 1000.0):.0f} mm"
+        else:
+            key = js.member_kind(e)
         v, t = tube(p1, p2, e.d_out / 2.0, e.d_in / 2.0)
         groups.setdefault(key, []).append((v, t, f"{e.name}  Ø{e.d_out:.2f} m"))
     order = ["Buoyancy tank", "Flooded tank (damage case)", "Leg / vertical", "Horizontal brace", "Diagonal brace"]
+    if by_d:
+        order = ["Flooded tank (damage case)"] + list(dia_col)
     for key in order:
         if key not in groups:
             continue
-        col, op = FLOODED if key.startswith("Flooded") else STYLE[key]
+        col, op = FLOODED if key.startswith("Flooded") else ((dia_col[key], 1.0) if by_d else STYLE[key])
         v, i, j, k, txt = _merge(groups[key])
         fig.add_trace(go.Mesh3d(x=v[:, 0], y=v[:, 1], z=v[:, 2], i=i, j=j, k=k, color=col, opacity=op, name=key,
                                 showlegend=True, text=txt, hoverinfo="text", flatshading=True,

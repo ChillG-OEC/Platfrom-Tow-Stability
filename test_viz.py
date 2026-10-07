@@ -28,3 +28,11 @@ def test_floating_figure_builds():
     stt = m.attitude_state(0.0, 0.0, m.hydrostatics()["trim_deg"])
     fig = viz.jacket_figure(els, wts, ops, prm, rot=stt["rot"], zw=stt["zw"], g_pt=stt["G"], b_pt=stt["B"])
     assert len(fig.data) > 0
+
+
+def test_colour_by_diameter_names_traces_by_diameter():
+    els, wts, ops, prm = _synth()
+    names = {t.name for t in viz.jacket_figure(els, wts, ops, prm, color_by="diameter").data if t.name}
+    dias = {f"Ø{round(e.d_out * 1000.0):.0f} mm" for e in els}
+    assert dias <= names
+    assert not any("Leg" in n for n in names if n.startswith("Leg"))

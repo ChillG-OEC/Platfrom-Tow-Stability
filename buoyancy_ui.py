@@ -328,7 +328,8 @@ def render_case_platform(raw: dict) -> None:
     left, right = st.columns([3, 2])
     with left:
         fig = viz.jacket_figure(s.elements, s.weights, s.openings, case["params"], show_triad=False,
-                                title="Platform from the case file, as built")
+                                title="Platform from the case file, as built",
+                                color_by="diameter" if st.session_state.get("g_color") == "Diameter" else "type")
         if legs is not None:
             for r in legs.itertuples():
                 zl = min(r.top_z, b1) - (0.04 * (b1 - b0) if not full else -4.0 - (6.0 if r.leg.startswith("B") else 0.0))
@@ -350,7 +351,11 @@ def render_case_platform(raw: dict) -> None:
 
 
 def _queue_send(payload: dict) -> None:
-    st.session_state["send_case_pending"] = payload
+    ss = st.session_state
+    ph = {k: payload["widgets"][k] for k in ("p_tow_x", "p_tow_y", "p_tow_z")}
+    ph.update({k: ss[k] for k in ("p_tow_heading_deg", "p_wind_speed_kn") if k in ss})
+    payload = dict(payload, placeholders=ph)          # values still to be set from the design basis
+    ss["send_case_pending"] = payload
 
 
 def _send_section(case: dict, key: str) -> None:
@@ -385,6 +390,28 @@ def _send_section(case: dict, key: str) -> None:
     st.button("Use in tabs 1-6", key=f"bu_send_{key}", on_click=_queue_send, args=(payload,))
     if st.session_state.get("send_case_done") == case["name"]:
         st.success("Loaded into tabs 1-6. Check tab 1 and tab 2, then run the analysis from the sidebar.")
+
+
+def _window_figure(df, rm, rd, crit):
+    """Reserve, GM and clearance against tank diameter, with the passing range shaded."""
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+    f = go.Figure(make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.06,
+                                subplot_titles=("Reserve buoyancy [%]", "GM min [m]", "Deck clearance [m]")))
+    ok = df[df.floats]
+    x = ok.diameter_m
+    for r, (col, lim) in enumerate((("reserve_pct", rm), ("gm_min_m", crit.gm_min), ("clearance_m", crit.clear_min_m)), 1):
+        f.add_scatter(x=x, y=ok[col], mode="lines+markers", row=r, col=1, showlegend=False, line=dict(color="#1f77b4"))
+        f.add_hline(y=lim, line=dict(color="red", dash="dash"), row=r, col=1)
+    for col, colour, name in (("intact_passed", "rgba(255,193,7,0.25)", "intact passes"),
+                              ("all_passed", "rgba(46,160,67,0.30)", "intact + all damage pass")):
+        d = df[df[col]].diameter_m
+        if len(d):
+            f.add_vrect(x0=d.min(), x1=d.max(), fillcolor=colour, line_width=0, annotation_text=name,
+                        annotation_position="top left" if col == "intact_passed" else "bottom right")
+    f.update_xaxes(title_text="Tank diameter [m]", row=3, col=1)
+    f.update_layout(height=620, margin=dict(l=10, r=10, t=40, b=10))
+    return f
 
 
 def _sizing_tab(s, mods, states, params, crit, rm, rm_dmg, key) -> None:
@@ -424,6 +451,7 @@ def _sizing_tab(s, mods, states, params, crit, rm, rm_dmg, key) -> None:
                                       weight_t="weight [t]", reserve_pct="reserve [%]", clearance_m="clearance [m]",
                                       gm_min_m="GM [m]", intact_passed="intact pass", damage_passed="damage passed",
                                       damage_total="damage cases", all_passed="all pass"))
+        st.plotly_chart(_window_figure(df, rm, rd, crit), use_container_width=True)
         st.dataframe(show.drop(columns=["floats"]).round(2), hide_index=True)
         st.caption("Bigger is not always better: very large tanks can raise the reserve but lose GM or clearance. "
                    "The table shows each size so you can see the window.")
