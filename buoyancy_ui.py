@@ -498,63 +498,206 @@ def _sizing_tab(s, mods, states, params, crit, rm, rm_dmg, key) -> None:
                    "The table shows each size so you can see the window.")
 
 
+def _state_lines(elements, states_by_member: dict, xi: int, yi: int, dz: float = 0.0):
+    """Line coordinates for plan (xi, yi = 0, 1) or elevation (0, 2) split into sealed / flooded / other members."""
+    out = {"sealed": ([], []), "flooded": ([], []), "other": ([], [])}
+    for e in elements:
+        k = states_by_member.get(e.name, "other")
+        u = [e.p1[xi], e.p2[xi], None]
+        v = [e.p1[yi] - (dz if yi == 2 else 0.0), e.p2[yi] - (dz if yi == 2 else 0.0), None]
+        out[k][0].extend(u)
+        out[k][1].extend(v)
+    return out
+
+
+def _circle(cx, cy, r, n=40):
+    import math
+    t = [2 * math.pi * i / n for i in range(n + 1)]
+    return [cx + r * math.cos(a) for a in t], [cy + r * math.sin(a) for a in t]
+
+
+def _requirement_figures(s, mm, picks, req, dz, zw):
+    smap = {}
+    for m in mm:
+        for name in m.members:
+            smap[name] = "sealed" if picks[m.name] == "Sealed" else "flooded"
+    sty = {"other": ("#c3c9d1", 1.0, "solid", "Other members"), "flooded": ("#8a8f98", 3.0, "dot", "Flooded"),
+           "sealed": ("#1f6fb2", 3.5, "solid", "Sealed")}
+    figs = []
+    for xi, yi, title, xl, yl in ((0, 1, "Plan (x across, y up)", "x [m]", "y [m]"),
+                                  (0, 2, "Elevation (x across, EL up)", "x [m]", "EL [m]")):
+        fig = go.Figure()
+        lines = _state_lines(s.elements, smap, xi, yi, dz)
+        for k in ("other", "flooded", "sealed"):
+            col, w, dash, nm = sty[k]
+            if lines[k][0]:
+                fig.add_trace(go.Scatter(x=lines[k][0], y=lines[k][1], mode="lines", name=nm, hoverinfo="skip",
+                                         showlegend=(yi == 2), line=dict(color=col, width=w, dash=dash)))
+        if yi == 1:                                  # vertical members (legs) are points in plan
+            pts = {"sealed": ([], []), "flooded": ([], [])}
+            for e in s.elements:
+                st_ = smap.get(e.name)
+                if st_ and abs(e.p1[0] - e.p2[0]) < 1e-6 and abs(e.p1[1] - e.p2[1]) < 1e-6:
+                    pts[st_][0].append(e.p1[0])
+                    pts[st_][1].append(e.p1[1])
+            for k, sym, col in (("sealed", "circle", "#1f6fb2"), ("flooded", "circle-open", "#6b7280")):
+                if pts[k][0]:
+                    fig.add_trace(go.Scatter(x=pts[k][0], y=pts[k][1], mode="markers", name=sty[k][3] + " legs",
+                                             hoverinfo="skip", marker=dict(symbol=sym, size=14, color=col,
+                                                                           line=dict(width=2, color=col))))
+        if req and req.get("tanks"):
+            r = req["diameter_m"] / 2.0
+            for k, (tx, ty, z1, z2) in enumerate(req["tanks"]):
+                if yi == 1:
+                    cxs, cys = _circle(tx, ty, r)
+                    fig.add_trace(go.Scatter(x=cxs, y=cys, mode="lines", fill="toself", fillcolor="rgba(42,127,98,0.35)",
+                                             line=dict(color="#2a7f62", width=2), name="Required tank",
+                                             showlegend=(k == 0), hovertext=f"Tank {k + 1}: x {tx:.1f}, y {ty:.1f} m",
+                                             hoverinfo="text"))
+                else:
+                    fig.add_trace(go.Scatter(x=[tx - r, tx + r, tx + r, tx - r, tx - r],
+                                             y=[z1 - dz, z1 - dz, z2 - dz, z2 - dz, z1 - dz], mode="lines",
+                                             fill="toself", fillcolor="rgba(42,127,98,0.35)",
+                                             line=dict(color="#2a7f62", width=2), name="Required tank",
+                                             showlegend=(k == 0), hoverinfo="skip"))
+            cx, cy = req["centroid"]
+            if yi == 1:
+                fig.add_trace(go.Scatter(x=[cx], y=[cy], mode="markers", name="Tank group centroid",
+                                         marker=dict(symbol="x", size=12, color="#c0392b", line=dict(width=2))))
+        if yi == 2 and zw is not None:
+            fig.add_hline(y=zw - dz, line_dash="dash", line_color="#1f6fb2", annotation_text="Waterline",
+                          annotation_position="top left")
+        xs_all = [v for e in s.elements for v in (e.p1[0], e.p2[0])]
+        if req and req.get("tanks"):
+            xs_all += [t[0] - req["diameter_m"] / 2 for t in req["tanks"]] + [t[0] + req["diameter_m"] / 2 for t in req["tanks"]]
+        fig.update_layout(height=430, margin=dict(l=50, r=10, t=36, b=10), title=dict(text=title, font=dict(size=14)),
+                          xaxis=dict(title=xl, range=[min(xs_all) - 1.0, max(xs_all) + 1.0],
+                                     scaleanchor="y" if yi == 1 else None, constrain="domain"),
+                          yaxis=dict(title=yl, automargin=True), legend=dict(orientation="h", y=-0.2))
+        figs.append(fig)
+    return figs
+
+
 def _capacity_section(case: dict, key: str) -> None:
-    """Floating capacity of the member modules (legs, outriggers) sealed or flooded, tanks left out by default."""
-    s, mods, params = case["structure"], case["modules"], case["params"]
+    """Floating capacity of the member modules (legs, outriggers) sealed or flooded, and the buoyancy modules
+    (tanks) needed on top of it, with where they go.  Tank modules in the file are left out."""
+    s, mods, params, crit = case["structure"], case["modules"], case["params"], case["criteria"]
     mm = bu.member_modules(mods)
-    st.subheader("Floating capacity: legs and outriggers, sealed or flooded")
+    st.subheader("Floating capacity and the buoyancy modules it needs")
     if not s.elements or not mm:
         st.info("No member modules (legs, outriggers) in this case file, so there is no capacity to show.")
         return
     if len(mm) > 6:
-        st.info("More than 6 member modules: reduce them in the case file to show the matrix.")
+        st.info("More than 6 member modules: reduce them in the case file to show this section.")
         return
-    tanks = [m for m in mods if m not in mm]
-    with_tanks = False
-    if tanks:
-        with_tanks = st.checkbox("Also include the tank modules as defined in the file (placeholders)", value=False,
-                                 key=f"cap_tanks_{key}")
-    rm = float(case.get("reserve_min_pct", 0.0))
-    rows = []
-    for combo in itertools.product(("sealed", "flooded"), repeat=len(mm)):
-        states = {m.name: ("sealed" if c == "sealed" else "off") for m, c in zip(mm, combo)}
-        for m in tanks:
-            states[m.name] = case["states"].get(m.name, "sealed") if with_tanks else "off"
-        r = bu.capacity(s, mods, states, params)
-        need = max(0.0, r["weight_t"] * (1.0 + rm / 100.0) - r["capacity_t"])
-        row = {m.name: c for m, c in zip(mm, combo)}
-        row.update({"Buoyant volume [m3]": r["volume_m3"], "Capacity [t]": r["capacity_t"], "Weight [t]": r["weight_t"],
-                    "Net capacity [t]": r["net_t"], "Reserve [%]": r["reserve_pct"],
-                    "Floats": "yes" if r["floats"] else "no",
-                    f"Still needed for {rm:g} % reserve [t]": need})
+    dz = float(case.get("datum_offset_m", 0.0))
+    zs = [z for e in s.elements for z in (e.p1[2], e.p2[2])]
+    zlo, zhi = min(zs), max(zs)
+    st.caption("Switch each member module between sealed (capped) and flooded. The tank modules in the case file are "
+               "left out: the section works out the buoyancy modules the jacket needs and where they must sit.")
+    cols = st.columns(min(3, len(mm)))
+    picks = {}
+    for i, m in enumerate(mm):
+        picks[m.name] = cols[i % len(cols)].radio(m.name, ["Sealed", "Flooded"], horizontal=True,
+                                                  key=f"cap_pick_{key}_{m.name}")
+    rm0 = float(case.get("reserve_min_pct", 0.0)) or 10.0
+    with st.expander("Buoyancy module assumptions", expanded=False):
+        c1, c2, c3, c4 = st.columns(4)
+        reserve = c1.number_input("Reserve target [%]", 0.0, 100.0, rm0, 1.0, key=f"cap_res_{key}")
+        n_t = int(c2.selectbox("Number of tanks", [4, 2, 1], key=f"cap_n_{key}"))
+        diam = c3.number_input("Tank diameter [m]", 0.5, 12.0, 4.0, 0.5, key=f"cap_d_{key}")
+        steel = c4.number_input("Tank steel [t per m3]", 0.0, 0.9, bu.TANK_STEEL_T_PER_M3, 0.01, key=f"cap_s_{key}")
+        d1, d2, d3 = st.columns(3)
+        z_el = d1.number_input("Tank centre height [EL, m]", float(round(zlo - dz)), float(round(zhi - dz)),
+                               float(round(zlo + 0.77 * (zhi - zlo) - dz, 1)), 0.5, key=f"cap_z_{key}")
+        hx = d2.number_input("Tank half-spacing in x [m]", 0.0, 30.0, 6.5, 0.5, key=f"cap_hx_{key}")
+        hy = d3.number_input("Tank half-spacing in y [m]", 0.0, 30.0, 3.5, 0.5, key=f"cap_hy_{key}")
+        st.caption("The tank group centroid is solved so the level jacket floats upright; the spacing only sets how "
+                   "the tanks are spread about it. Steel is added to the weight in proportion to tank volume.")
+
+    def req_for(states_in: dict):
+        sts = {m.name: ("sealed" if states_in[m.name] == "Sealed" else "off") for m in mm}
+        return bu.tank_requirement(s, mods, sts, params, crit, reserve_pct=reserve, n_tanks=n_t, diameter=diam,
+                                   z_mid=z_el + dz, half_x=hx, half_y=hy, steel_t_per_m3=steel)
+
+    try:
+        req = req_for(picks)
+    except ValueError as exc:
+        st.error(str(exc))
+        return
+    cap_t, w_t = req["member_capacity_t"], req["weight_t"]
+    k = st.columns(4)
+    k[0].metric("Weight to carry", f"{w_t:.1f} t")
+    k[1].metric("Capacity of legs and outriggers", f"{cap_t:.1f} t")
+    k[2].metric("Net capacity", f"{cap_t - w_t:+.1f} t")
+    k[3].metric(f"Tank buoyancy needed for {reserve:g} % reserve", f"{req['volume_m3'] * params.rho_w:.0f} t")
+    ev = req.get("evaluation")
+    zw = None
+    if req["volume_m3"] <= 1e-9:
+        st.success("The legs and outriggers alone give the reserve target: no extra buoyancy modules are needed.")
+    else:
+        k2 = st.columns(4)
+        k2[0].metric("Tank volume", f"{req['volume_m3']:.0f} m3")
+        k2[1].metric("As tanks", f"{n_t} x D {diam:g} x {req['length_m']:.1f} m")
+        k2[2].metric("Tank steel", f"{req['steel_t']:.0f} t")
+        k2[3].metric("Group centroid", f"x {req['centroid'][0]:.2f}, y {req['centroid'][1]:.2f} m")
+        if not req["converged"]:
+            st.warning("The tank position did not settle to a level float: treat x and y as approximate.")
+        if ev and ev.get("floats"):
+            zw = ev["waterline_z"]
+            line = (f"With these tanks: reserve {ev['reserve_pct']:.1f} %, list {ev['free_tilt_deg']:.2f} deg, "
+                    f"GM {ev['gm_min_m']:.1f} m, draft {ev['draft_m']:.1f} m"
+                    + ("" if ev["clearance_m"] is None else f", clearance {ev['clearance_m']:.1f} m")
+                    + f", least tank emergence {ev['tank_emerged_min_m']:.1f} m.")
+            bad = ev["clearance_m"] is not None and crit.clear_min_m > 0 and ev["clearance_m"] < crit.clear_min_m
+            (st.warning if bad else st.info)(line + (" Clearance is below the case-file limit: more tank volume (a higher "
+                                                       "reserve) or a lower draft is needed." if bad else ""))
+        elif ev:
+            st.error(f"The arrangement does not float: {ev.get('error')}")
+        tdf = pd.DataFrame([dict(Tank=i + 1, **{"x [m]": x, "y [m]": y, "bottom [EL m]": z1 - dz, "top [EL m]": z2 - dz,
+                                              "diameter [m]": diam}) for i, (x, y, z1, z2) in enumerate(req["tanks"])])
+        st.dataframe(tdf.round(2), hide_index=True)
+        st.download_button("Download tank positions (CSV)", tdf.round(3).to_csv(index=False), "required_tanks.csv",
+                           "text/csv", key=f"cap_dl_{key}")
+    f1, f2 = _requirement_figures(s, mm, picks, req, dz, zw)
+    g1, g2 = st.columns(2)
+    with g1:
+        _show(f1)
+    with g2:
+        _show(f2)
+
+    st.markdown("**All sealed / flooded combinations** (tank steel included in the requirement)")
+    rows, labels = [], []
+    for combo in itertools.product(("Sealed", "Flooded"), repeat=len(mm)):
+        pk = {m.name: c for m, c in zip(mm, combo)}
+        try:
+            r = req_for(pk)
+        except ValueError:
+            continue
+        cap_net = r["member_capacity_t"] - r["weight_t"]
+        row = {m.name: c.lower() for m, c in zip(mm, combo)}
+        row.update({"Capacity [t]": r["member_capacity_t"], "Weight [t]": r["weight_t"], "Net capacity [t]": cap_net,
+                    "Floats": "yes" if cap_net > 0 else "no",
+                    "Tank volume needed [m3]": r["volume_m3"],
+                    "Tank group x [m]": None if r["centroid"] is None else r["centroid"][0],
+                    "Tank group y [m]": None if r["centroid"] is None else r["centroid"][1]})
         rows.append(row)
+        labels.append(" + ".join(f"{m.name.split(' (')[0]} {c.lower()}" for m, c in zip(mm, combo)))
     df = pd.DataFrame(rows)
-    full = df.iloc[0]
-    k = st.columns(3)
-    k[0].metric("Weight to carry", f"{full['Weight [t]']:.1f} t")
-    k[1].metric("Best case capacity (all sealed)", f"{full['Capacity [t]']:.1f} t")
-    k[2].metric("Net capacity (all sealed)", f"{full['Net capacity [t]']:+.1f} t")
-    per = [f"{m.name}: {bu.capacity(s, mods, {**{x.name: 'off' for x in mods}, m.name: 'sealed'}, params)['capacity_t']:.1f} t"
-           for m in mm]
-    st.caption("Capacity added by each module when sealed: " + "; ".join(per) + ". Capacity is the weight of water "
-               "displaced with every sealed member fully under, so it is the most the jacket can carry; the waterline "
-               "and trim are not solved here. Tank modules are " + ("included as placeholders." if with_tanks else
-               "left out until their design is issued.") + " Weight is the factored weight in the file"
-               + ("." if with_tanks else ", without tank steel."))
-    show = df.copy()
     num = [c for c in df.columns if c.endswith("]")]
-    st.dataframe(show.style.format({c: "{:.1f}" for c in num}), hide_index=True)
-    labels = [" + ".join(f"{m.name.split(' (')[0]} {c}" for m, c in zip(mm, combo)) for combo in
-              itertools.product(("sealed", "flooded"), repeat=len(mm))]
+    st.dataframe(df.style.format({c: "{:.1f}" for c in num}, na_rep="-"), hide_index=True)
     fig = go.Figure(go.Bar(x=labels, y=df["Capacity [t]"], text=[f"{v:.0f} t" for v in df["Capacity [t]"]],
                            textposition="outside", name="Capacity",
                            marker_color=["#2a7f62" if f == "yes" else "#8a8f98" for f in df["Floats"]]))
-    wt = float(full["Weight [t]"])
+    wt = float(df["Weight [t]"].iloc[0])
     fig.add_hline(y=wt, line_dash="dash", line_color="#c0392b", annotation_text=f"Weight {wt:.0f} t",
                   annotation_position="top left")
-    fig.update_layout(height=380, margin=dict(l=10, r=10, t=30, b=10), yaxis_title="Capacity [t]",
+    fig.update_layout(height=340, margin=dict(l=10, r=10, t=30, b=10), yaxis_title="Capacity [t]",
                       showlegend=False, yaxis_range=[0, max(wt, float(df["Capacity [t]"].max())) * 1.2])
     _show(fig)
+    st.caption("Capacity is the weight of water the sealed members displace with every one fully under, so it is the "
+               "most they can carry; braces are not counted. Reserve is (capacity - weight) / weight. The tank steel "
+               "intensity, count and size are placeholders until the installation design is issued.")
 
 
 def _modules_section(case: dict, key: str) -> None:

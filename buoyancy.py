@@ -225,6 +225,105 @@ def member_modules(modules: Sequence[BuoyancyModule]) -> list:
     return [m for m in modules if m.members and not m.elements]
 
 
+TANK_STEEL_T_PER_M3 = 0.24      # WCR upper-level buoyancy-tank steel per m3 of tank volume (screening value)
+
+
+def tank_pattern(n: int, a: float, b: float) -> list:
+    """Offsets of n equal vertical tanks about their common centroid: 1 centre, 2 along y, 4 at the corners."""
+    if n == 1:
+        return [(0.0, 0.0)]
+    if n == 2:
+        return [(0.0, -b), (0.0, b)]
+    if n == 4:
+        return [(-a, -b), (a, -b), (-a, b), (a, b)]
+    raise ValueError("Tank count must be 1, 2 or 4.")
+
+
+def _tank_module(name: str, centre_xy: tuple, offsets: list, z_mid: float, length: float, d: float,
+                 steel_each_t: float) -> BuoyancyModule:
+    els, wts = [], []
+    for k, (ox, oy) in enumerate(offsets):
+        x, y = centre_xy[0] + ox, centre_xy[1] + oy
+        els.append(js.Element(f"{name} {k + 1}", (x, y, z_mid - length / 2.0), (x, y, z_mid + length / 2.0), d,
+                              buoyant=True, tank=True))
+        wts.append(js.WeightItem(f"{name} {k + 1} steel", steel_each_t, x, y, z_mid))
+    return BuoyancyModule(name, elements=tuple(els), weights=tuple(wts),
+                          note="REQUIRED starting point from the capacity view: replace with the installation design.")
+
+
+def tank_requirement(structure: Structure, modules: Sequence[BuoyancyModule], states: dict, params: js.Params,
+                     crit: js.Criteria, *, reserve_pct: float = 10.0, n_tanks: int = 4, diameter: float = 4.0,
+                     z_mid: float, half_x: float = 6.5, half_y: float = 3.5,
+                     steel_t_per_m3: float = TANK_STEEL_T_PER_M3, tol_m: float = 0.01, max_iter: int = 12) -> dict:
+    """Starting-point buoyancy-module requirement for a given sealed / flooded condition of the member modules.
+
+    Tank modules in `modules` are ignored (switched off).  Returns the tank volume that gives `reserve_pct`
+    reserve once the tank steel (steel_t_per_m3 x volume) is added, and the plan position of the tank group that
+    makes the level jacket float upright (centre of buoyancy over the centre of gravity), with the float check of
+    the resulting arrangement.  Tanks are n equal vertical cylinders (1, 2 or 4) about that centroid."""
+    mm = member_modules(modules)
+    st0 = {m.name: states.get(m.name, "off") for m in mm}
+    for m in modules:
+        if m not in mm:
+            st0[m.name] = "off"
+    cap = capacity(structure, modules, st0, params)
+    w, c, rho, r = cap["weight_t"], cap["capacity_t"], params.rho_w, reserve_pct / 100.0
+    den = rho - steel_t_per_m3 * (1.0 + r)
+    if den <= 0.0:
+        raise ValueError("Tank steel per m3 is too high for the tanks to add net buoyancy at this reserve.")
+    vol = max(0.0, (w * (1.0 + r) - c) / den)
+    out = dict(volume_m3=vol, member_capacity_t=c, weight_t=w, n_tanks=n_tanks, diameter_m=diameter,
+               reserve_target_pct=reserve_pct, z_mid=z_mid)
+    if vol <= 1e-9:
+        out.update(length_m=0.0, steel_t=0.0, centroid=None, tanks=[], converged=True, evaluation=None)
+        return out
+    area = math.pi / 4.0 * diameter ** 2
+    length = vol / (n_tanks * area)
+    steel_each = steel_t_per_m3 * vol / n_tanks
+    offs = tank_pattern(n_tanks, half_x, half_y)
+    base_wts = list(structure.weights)
+    gx = sum(x.mass_t * x.x for x in base_wts) / sum(x.mass_t for x in base_wts)
+    gy = sum(x.mass_t * x.y for x in base_wts) / sum(x.mass_t for x in base_wts)
+
+    def offset(cx: float, cy: float):
+        mod = _tank_module("Required tanks", (cx, cy), offs, z_mid, length, diameter, steel_each)
+        mods = list(mm) + [mod]
+        sts = {**{m.name: st0[m.name] for m in mm}, mod.name: "sealed"}
+        els, wts, ops, dam = assemble(structure, mods, sts)
+        mdl = js.JacketModel(els, wts, ops, params, damaged=dam)
+        hy = mdl._hydro(__import__("numpy").eye(3), None)
+        if hy is None:
+            return None
+        b = hy[1]
+        return float(b[0] - mdl.G[0]), float(b[1] - mdl.G[1])
+
+    cx, cy, ok = gx, gy, False
+    for _ in range(max_iter):
+        f0 = offset(cx, cy)
+        if f0 is None:
+            break
+        if max(abs(f0[0]), abs(f0[1])) < tol_m:
+            ok = True
+            break
+        h = 0.5
+        fx, fy = offset(cx + h, cy), offset(cx, cy + h)
+        if fx is None or fy is None:
+            break
+        j = [[(fx[0] - f0[0]) / h, (fy[0] - f0[0]) / h], [(fx[1] - f0[1]) / h, (fy[1] - f0[1]) / h]]
+        det = j[0][0] * j[1][1] - j[0][1] * j[1][0]
+        if abs(det) < 1e-9:
+            break
+        dx = -(j[1][1] * f0[0] - j[0][1] * f0[1]) / det
+        dy = -(-j[1][0] * f0[0] + j[0][0] * f0[1]) / det
+        cx, cy = cx + dx, cy + dy
+    mod = _tank_module("Required tanks", (cx, cy), offs, z_mid, length, diameter, steel_each)
+    sts = {**{m.name: st0[m.name] for m in mm}, mod.name: "sealed"}
+    ev = evaluate(structure, list(mm) + [mod], sts, params, crit)
+    out.update(length_m=length, steel_t=steel_each * n_tanks, centroid=(cx, cy), converged=ok, module=mod,
+               tanks=[(e.p1[0], e.p1[1], e.p1[2], e.p2[2]) for e in mod.elements], evaluation=ev)
+    return out
+
+
 def combinations(modules: Sequence[BuoyancyModule], options: Sequence[str] = ("sealed", "off"),
                  fixed: Optional[dict] = None) -> list:
     """All state dicts over `options` for the modules not in `fixed`."""

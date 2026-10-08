@@ -265,3 +265,42 @@ def test_member_modules_excludes_tank_modules():
     tank = bu.BuoyancyModule("tank", elements=(js.Element("t", (0, 0, 0), (0, 0, 10), 2.0),))
     legs = bu.BuoyancyModule("legs", members=("L1",))
     assert [m.name for m in bu.member_modules([legs, tank])] == ["legs"]
+
+
+def test_tank_requirement_volume_reserve_and_level_float():
+    # weights sit off-centre in y, so the tank group has to move to keep the jacket level
+    s = bu.Structure([leg("L1", x=0.0, y=0.0), leg("L2", x=6.0, y=0.0)],
+                     [js.WeightItem("w", 100.0, 3.0, 1.0, 40.0)])
+    mods = [bu.BuoyancyModule("legs", members=("L1", "L2"), z_lo=0.0, z_hi=60.0)]
+    r = bu.tank_requirement(s, mods, {"legs": "sealed"}, params(), js.Criteria(), reserve_pct=10.0,
+                            n_tanks=4, diameter=2.0, z_mid=40.0, half_x=3.0, half_y=2.0)
+    cap = 2 * 60.0 * A1 * RHO
+    assert r["member_capacity_t"] == pytest.approx(cap)
+    v = (100.0 * 1.1 - cap) / (RHO - bu.TANK_STEEL_T_PER_M3 * 1.1)
+    assert r["volume_m3"] == pytest.approx(v, rel=1e-9)
+    ev = r["evaluation"]
+    assert r["converged"] and ev["floats"]
+    assert ev["reserve_pct"] == pytest.approx(10.0, abs=1e-6)
+    # level condition: centre of buoyancy sits over the centre of gravity in plan
+    import numpy as np
+    sts = {"legs": "sealed", r["module"].name: "sealed"}
+    els, wts, ops, dam = bu.assemble(s, mods + [r["module"]], sts)
+    mdl = js.JacketModel(els, wts, ops, params(), damaged=dam)
+    b = mdl._hydro(np.eye(3), None)[1]
+    assert abs(b[0] - mdl.G[0]) < 0.02 and abs(b[1] - mdl.G[1]) < 0.02
+
+
+def test_tank_requirement_is_zero_when_members_already_carry_the_reserve():
+    s = bu.Structure([leg("L1")], [js.WeightItem("w", 50.0, 0, 0, 40.0)])
+    mods = [bu.BuoyancyModule("legs", members=("L1",))]
+    r = bu.tank_requirement(s, mods, {"legs": "sealed"}, params(), js.Criteria(), reserve_pct=10.0, z_mid=40.0)
+    assert r["volume_m3"] == 0.0 and r["tanks"] == [] and r["evaluation"] is None
+
+
+def test_tank_requirement_ignores_tank_modules_in_the_file():
+    s = bu.Structure([leg("L1")], [js.WeightItem("w", 50.0, 0, 0, 40.0)])
+    legs = bu.BuoyancyModule("legs", members=("L1",), z_lo=0.0, z_hi=40.0)
+    tank = bu.BuoyancyModule("tank", elements=(js.Element("t", (3, 0, 20), (3, 0, 40), 5.0),))
+    a = bu.tank_requirement(s, [legs], {"legs": "sealed"}, params(), js.Criteria(), z_mid=30.0)
+    b = bu.tank_requirement(s, [legs, tank], {"legs": "sealed", "tank": "sealed"}, params(), js.Criteria(), z_mid=30.0)
+    assert a["volume_m3"] == pytest.approx(b["volume_m3"])

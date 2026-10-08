@@ -322,7 +322,7 @@ def _capacity_case():
             "states": {"Main legs": "sealed", "Outriggers": "sealed"}}
 
 
-def test_capacity_matrix_shows_every_sealed_flooded_combination(tmp_path):
+def test_capacity_view_shows_capacity_requirement_and_toggles(tmp_path):
     p = tmp_path / "c.case.json"
     p.write_text(json.dumps(_capacity_case()))
     at = _run(p)
@@ -330,5 +330,16 @@ def test_capacity_matrix_shows_every_sealed_flooded_combination(tmp_path):
     assert any("Floating capacity" in h.value for h in at.subheader)
     labels = {m.label: m.value for m in at.metric}
     assert labels["Weight to carry"] == "100.0 t"
-    assert labels["Best case capacity (all sealed)"] == "161.0 t"          # 2 x 100 x pi/4 x 1.025
-    assert labels["Net capacity (all sealed)"] == "+61.0 t"
+    assert labels["Capacity of legs and outriggers"] == "161.0 t"          # 2 x 100 x pi/4 x 1.025
+    assert labels["Net capacity"] == "+61.0 t"
+    assert any(h.value.startswith("Floating capacity") for h in at.subheader)
+    # flood both modules: capacity 0 and tanks now needed
+    for r in at.radio:
+        if r.label in ("Main legs", "Outriggers"):
+            r.set_value("Flooded")
+    at.run()
+    assert not at.exception
+    labels = {m.label: m.value for m in at.metric}
+    assert labels["Capacity of legs and outriggers"] == "0.0 t"
+    assert labels["Tank volume"].endswith("m3")
+    assert "Group centroid" in labels
