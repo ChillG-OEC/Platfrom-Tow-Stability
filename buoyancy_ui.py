@@ -525,7 +525,8 @@ def _requirement_figures(s, mm, picks, req, dz, zw):
            "sealed": ("#1f6fb2", 3.5, "solid", "Sealed")}
     figs = []
     for xi, yi, title, xl, yl in ((0, 1, "Plan (x across, y up)", "x [m]", "y [m]"),
-                                  (0, 2, "Elevation (x across, EL up)", "x [m]", "EL [m]")):
+                                  (0, 2, "Front elevation (x across, EL up)", "x [m]", "EL [m]"),
+                                  (1, 2, "Side elevation (y across, EL up)", "y [m]", "EL [m]")):
         fig = go.Figure()
         lines = _state_lines(s.elements, smap, xi, yi, dz)
         for k in ("other", "flooded", "sealed"):
@@ -555,6 +556,7 @@ def _requirement_figures(s, mm, picks, req, dz, zw):
                                              showlegend=(k == 0), hovertext=f"Tank {k + 1}: x {tx:.1f}, y {ty:.1f} m",
                                              hoverinfo="text"))
                 else:
+                    tx = (tx, ty)[xi]                  # horizontal coordinate of this elevation
                     fig.add_trace(go.Scatter(x=[tx - r, tx + r, tx + r, tx - r, tx - r],
                                              y=[z1 - dz, z1 - dz, z2 - dz, z2 - dz, z1 - dz], mode="lines",
                                              fill="toself", fillcolor="rgba(42,127,98,0.35)",
@@ -567,9 +569,9 @@ def _requirement_figures(s, mm, picks, req, dz, zw):
         if yi == 2 and zw is not None:
             fig.add_hline(y=zw - dz, line_dash="dash", line_color="#1f6fb2", annotation_text="Waterline",
                           annotation_position="top left")
-        xs_all = [v for e in s.elements for v in (e.p1[0], e.p2[0])]
+        xs_all = [v for e in s.elements for v in (e.p1[xi], e.p2[xi])]
         if req and req.get("tanks"):
-            xs_all += [t[0] - req["diameter_m"] / 2 for t in req["tanks"]] + [t[0] + req["diameter_m"] / 2 for t in req["tanks"]]
+            xs_all += [t[xi] - req["diameter_m"] / 2 for t in req["tanks"]] + [t[xi] + req["diameter_m"] / 2 for t in req["tanks"]]
         fig.update_layout(height=430, margin=dict(l=50, r=10, t=36, b=10), title=dict(text=title, font=dict(size=14)),
                           xaxis=dict(title=xl, range=[min(xs_all) - 1.0, max(xs_all) + 1.0],
                                      scaleanchor="y" if yi == 1 else None, constrain="domain"),
@@ -659,12 +661,10 @@ def _capacity_section(case: dict, key: str) -> None:
         st.dataframe(tdf.round(2), hide_index=True)
         st.download_button("Download tank positions (CSV)", tdf.round(3).to_csv(index=False), "required_tanks.csv",
                            "text/csv", key=f"cap_dl_{key}")
-    f1, f2 = _requirement_figures(s, mm, picks, req, dz, zw)
-    g1, g2 = st.columns(2)
-    with g1:
-        _show(f1)
-    with g2:
-        _show(f2)
+    figs = _requirement_figures(s, mm, picks, req, dz, zw)
+    for col, fig_ in zip(st.columns(len(figs)), figs):
+        with col:
+            _show(fig_)
 
     st.markdown("**All sealed / flooded combinations** (tank steel included in the requirement)")
     rows, labels = [], []

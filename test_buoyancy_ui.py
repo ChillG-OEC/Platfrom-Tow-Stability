@@ -343,3 +343,24 @@ def test_capacity_view_shows_capacity_requirement_and_toggles(tmp_path):
     assert labels["Capacity of legs and outriggers"] == "0.0 t"
     assert labels["Tank volume"].endswith("m3")
     assert "Group centroid" in labels
+
+
+def test_requirement_figures_include_plan_front_and_side_elevation():
+    import buoyancy as bu
+    import buoyancy_ui as ui
+    import case_io
+    case = case_io.load_case(_capacity_case())
+    mm = bu.member_modules(case["modules"])
+    picks = {"Main legs": "Sealed", "Outriggers": "Flooded"}
+    req = bu.tank_requirement(case["structure"], case["modules"], {"Main legs": "sealed", "Outriggers": "off"},
+                              case["params"], case["criteria"], reserve_pct=10.0, z_mid=60.0)
+    figs = ui._requirement_figures(case["structure"], mm, picks, req, 0.0, None)
+    assert [f.layout.title.text.split(" (")[0] for f in figs] == ["Plan", "Front elevation", "Side elevation"]
+    side = figs[2]
+    assert side.layout.xaxis.title.text == "y [m]" and side.layout.yaxis.title.text == "EL [m]"
+    tank_traces = [t for t in side.data if t.name == "Required tank"]
+    assert len(tank_traces) == len(req["tanks"])
+    # tank rectangle in the side view is centred on the tank's y, not its x
+    ty = req["tanks"][0][1]
+    r = req["diameter_m"] / 2.0
+    assert min(tank_traces[0].x) == ty - r and max(tank_traces[0].x) == ty + r
