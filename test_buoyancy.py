@@ -233,3 +233,35 @@ def test_size_tanks_finds_the_passing_size():
     big = bu.scale_tanks(mods, ["T1"], 2.0)
     assert big[1].elements[0].d_out == pytest.approx(4.0) and big[1].weights[0].mass_t == pytest.approx(20.0)
     assert big[2].elements[0].d_out == pytest.approx(2.0)     # T2 untouched
+
+
+def test_capacity_is_rho_times_sealed_volume_and_reserve_matches_the_float_check():
+    s = bu.Structure([leg("L1"), leg("L2", x=5.0)], [js.WeightItem("w", 60.0, 2.5, 0, 50.0)])
+    legs = bu.BuoyancyModule("legs", members=("L1",))
+    outs = bu.BuoyancyModule("outriggers", members=("L2",))
+    mods = [legs, outs]
+    both = bu.capacity(s, mods, {"legs": "sealed", "outriggers": "sealed"}, params())
+    assert both["capacity_t"] == pytest.approx(2 * 100.0 * A1 * RHO, rel=1e-9)
+    assert both["volume_m3"] == pytest.approx(2 * 100.0 * A1, rel=1e-9)
+    assert both["net_t"] == pytest.approx(both["capacity_t"] - 60.0)
+    assert both["floats"] and both["reserve_pct"] == pytest.approx(100.0 * (both["capacity_t"] - 60.0) / 60.0)
+    one = bu.capacity(s, mods, {"legs": "sealed", "outriggers": "off"}, params())
+    assert one["capacity_t"] == pytest.approx(100.0 * A1 * RHO, rel=1e-9)
+    none = bu.capacity(s, mods, {"legs": "off", "outriggers": "off"}, params())
+    assert none["capacity_t"] == 0.0 and not none["floats"]
+    # same reserve as the full float check
+    row = bu.evaluate(s, mods, {"legs": "sealed", "outriggers": "sealed"}, params(), js.Criteria())
+    assert row["reserve_pct"] == pytest.approx(both["reserve_pct"], rel=1e-9)
+
+
+def test_flooded_state_gives_no_capacity_but_keeps_the_weight():
+    s = bu.Structure([leg("L1")], [js.WeightItem("w", 60.0, 0, 0, 50.0)])
+    m = bu.BuoyancyModule("legs", members=("L1",))
+    r = bu.capacity(s, [m], {"legs": "damaged"}, params())
+    assert r["capacity_t"] == 0.0 and r["weight_t"] == 60.0 and not r["floats"]
+
+
+def test_member_modules_excludes_tank_modules():
+    tank = bu.BuoyancyModule("tank", elements=(js.Element("t", (0, 0, 0), (0, 0, 10), 2.0),))
+    legs = bu.BuoyancyModule("legs", members=("L1",))
+    assert [m.name for m in bu.member_modules([legs, tank])] == ["legs"]

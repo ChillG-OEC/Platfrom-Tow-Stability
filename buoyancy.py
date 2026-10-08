@@ -203,6 +203,28 @@ def evaluate(structure: Structure, modules: Sequence[BuoyancyModule], states: di
     return row
 
 
+def capacity(structure: Structure, modules: Sequence[BuoyancyModule], states: dict, params: js.Params,
+             *, ballast: Optional[dict] = None) -> dict:
+    """Floating capacity of one state combination, with no waterline solved.
+
+    The capacity is the weight of water the buoyant, intact members displace when fully submerged
+    (rho x volume).  It is an upper bound on what the jacket can carry: reserve = (capacity - weight) / weight,
+    the same definition the float check uses.  Flooded ('damaged') and 'off' members count for nothing."""
+    els, wts, _ops, damaged = assemble(structure, modules, states, ballast)
+    live = [e for e in els if e.buoyant and not (damaged and e.flooded)]
+    vol = float(js.build_elem_arrays(live).vol_total)
+    cap = vol * params.rho_w
+    weight = float(sum(w.mass_t for w in wts))
+    net = cap - weight
+    return dict(volume_m3=vol, capacity_t=cap, weight_t=weight, net_t=net,
+                reserve_pct=(100.0 * net / weight) if weight > 0 else float("nan"), floats=bool(net > 0.0))
+
+
+def member_modules(modules: Sequence[BuoyancyModule]) -> list:
+    """Modules that seal existing structure members (legs, outriggers), as opposed to adding tanks."""
+    return [m for m in modules if m.members and not m.elements]
+
+
 def combinations(modules: Sequence[BuoyancyModule], options: Sequence[str] = ("sealed", "off"),
                  fixed: Optional[dict] = None) -> list:
     """All state dicts over `options` for the modules not in `fixed`."""

@@ -311,3 +311,24 @@ def test_enabled_check_with_zero_limit_blocks_the_run():
     at.run()
     assert any("seabed clearance check is switched on but its minimum is 0" in e.value for e in at.sidebar.error)
     assert at.sidebar.button[[b.label for b in at.sidebar.button].index("▶ Run analysis")].disabled
+
+
+def _capacity_case():
+    els = [{"name": "L1", "x1": 0, "y1": 0, "z1": 0, "x2": 0, "y2": 0, "z2": 100, "d_out": 1.0, "buoyant": False},
+           {"name": "L2", "x1": 5, "y1": 0, "z1": 0, "x2": 5, "y2": 0, "z2": 100, "d_out": 1.0, "buoyant": False}]
+    return {"name": "capacity case", "reserve_min_pct": 10.0,
+            "structure": {"elements": els, "weights": [{"item": "w", "mass_t": 100.0, "x": 2.5, "y": 0, "z": 50}]},
+            "modules": [{"name": "Main legs", "members": ["L1"]}, {"name": "Outriggers", "members": ["L2"]}],
+            "states": {"Main legs": "sealed", "Outriggers": "sealed"}}
+
+
+def test_capacity_matrix_shows_every_sealed_flooded_combination(tmp_path):
+    p = tmp_path / "c.case.json"
+    p.write_text(json.dumps(_capacity_case()))
+    at = _run(p)
+    assert not at.exception
+    assert any("Floating capacity" in h.value for h in at.subheader)
+    labels = {m.label: m.value for m in at.metric}
+    assert labels["Weight to carry"] == "100.0 t"
+    assert labels["Best case capacity (all sealed)"] == "161.0 t"          # 2 x 100 x pi/4 x 1.025
+    assert labels["Net capacity (all sealed)"] == "+61.0 t"

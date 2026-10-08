@@ -9,6 +9,7 @@ repository.  Sections used when present:
 from __future__ import annotations
 
 import inspect
+import itertools
 import json
 from pathlib import Path
 
@@ -497,6 +498,65 @@ def _sizing_tab(s, mods, states, params, crit, rm, rm_dmg, key) -> None:
                    "The table shows each size so you can see the window.")
 
 
+def _capacity_section(case: dict, key: str) -> None:
+    """Floating capacity of the member modules (legs, outriggers) sealed or flooded, tanks left out by default."""
+    s, mods, params = case["structure"], case["modules"], case["params"]
+    mm = bu.member_modules(mods)
+    st.subheader("Floating capacity: legs and outriggers, sealed or flooded")
+    if not s.elements or not mm:
+        st.info("No member modules (legs, outriggers) in this case file, so there is no capacity to show.")
+        return
+    if len(mm) > 6:
+        st.info("More than 6 member modules: reduce them in the case file to show the matrix.")
+        return
+    tanks = [m for m in mods if m not in mm]
+    with_tanks = False
+    if tanks:
+        with_tanks = st.checkbox("Also include the tank modules as defined in the file (placeholders)", value=False,
+                                 key=f"cap_tanks_{key}")
+    rm = float(case.get("reserve_min_pct", 0.0))
+    rows = []
+    for combo in itertools.product(("sealed", "flooded"), repeat=len(mm)):
+        states = {m.name: ("sealed" if c == "sealed" else "off") for m, c in zip(mm, combo)}
+        for m in tanks:
+            states[m.name] = case["states"].get(m.name, "sealed") if with_tanks else "off"
+        r = bu.capacity(s, mods, states, params)
+        need = max(0.0, r["weight_t"] * (1.0 + rm / 100.0) - r["capacity_t"])
+        row = {m.name: c for m, c in zip(mm, combo)}
+        row.update({"Buoyant volume [m3]": r["volume_m3"], "Capacity [t]": r["capacity_t"], "Weight [t]": r["weight_t"],
+                    "Net capacity [t]": r["net_t"], "Reserve [%]": r["reserve_pct"],
+                    "Floats": "yes" if r["floats"] else "no",
+                    f"Still needed for {rm:g} % reserve [t]": need})
+        rows.append(row)
+    df = pd.DataFrame(rows)
+    full = df.iloc[0]
+    k = st.columns(3)
+    k[0].metric("Weight to carry", f"{full['Weight [t]']:.1f} t")
+    k[1].metric("Best case capacity (all sealed)", f"{full['Capacity [t]']:.1f} t")
+    k[2].metric("Net capacity (all sealed)", f"{full['Net capacity [t]']:+.1f} t")
+    per = [f"{m.name}: {bu.capacity(s, mods, {**{x.name: 'off' for x in mods}, m.name: 'sealed'}, params)['capacity_t']:.1f} t"
+           for m in mm]
+    st.caption("Capacity added by each module when sealed: " + "; ".join(per) + ". Capacity is the weight of water "
+               "displaced with every sealed member fully under, so it is the most the jacket can carry; the waterline "
+               "and trim are not solved here. Tank modules are " + ("included as placeholders." if with_tanks else
+               "left out until their design is issued.") + " Weight is the factored weight in the file"
+               + ("." if with_tanks else ", without tank steel."))
+    show = df.copy()
+    num = [c for c in df.columns if c.endswith("]")]
+    st.dataframe(show.style.format({c: "{:.1f}" for c in num}), hide_index=True)
+    labels = [" + ".join(f"{m.name.split(' (')[0]} {c}" for m, c in zip(mm, combo)) for combo in
+              itertools.product(("sealed", "flooded"), repeat=len(mm))]
+    fig = go.Figure(go.Bar(x=labels, y=df["Capacity [t]"], text=[f"{v:.0f} t" for v in df["Capacity [t]"]],
+                           textposition="outside", name="Capacity",
+                           marker_color=["#2a7f62" if f == "yes" else "#8a8f98" for f in df["Floats"]]))
+    wt = float(full["Weight [t]"])
+    fig.add_hline(y=wt, line_dash="dash", line_color="#c0392b", annotation_text=f"Weight {wt:.0f} t",
+                  annotation_position="top left")
+    fig.update_layout(height=380, margin=dict(l=10, r=10, t=30, b=10), yaxis_title="Capacity [t]",
+                      showlegend=False, yaxis_range=[0, max(wt, float(df["Capacity [t]"].max())) * 1.2])
+    _show(fig)
+
+
 def _modules_section(case: dict, key: str) -> None:
     s, mods, params, crit = case["structure"], case["modules"], case["params"], case["criteria"]
     st.subheader("C · Buoyancy modules on the member geometry")
@@ -561,5 +621,6 @@ def render() -> None:
         st.error("Case file problems:\n\n" + "\n".join(f"- {p}" for p in exc.problems))
         return
     _structure_section(case)
+    _capacity_section(case, key)
     _modules_section(case, key)
     _send_section(case, key)
